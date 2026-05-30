@@ -1,0 +1,40 @@
+# ============================================
+# TRAFFIC ENFORCEMENT SYSTEM - LOMBA READY
+# ============================================
+
+# Core CV
+ultralytics>=8.0.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# ANPR
+easyocr>=1.7.0
+
+# Tracking & Zone
+supervision[assets]>=0.28.0
+shapely>=2.0.0
+
+# Image preprocessing (malam, hujan)
+scikit-image>=0.21.0
+imageio>=2.31.0
+
+# Dashboard
+streamlit>=1.28.0
+folium>=0.14.0
+streamlit-folium>=0.15.0
+plotly>=5.17.0
+
+# Data & time
+pandas>=2.0.0
+python-dateutil>=2.8.0
+
+# API & notifikasi (ETLE, unit derek)
+requests>=2.31.0
+
+# NLP untuk klasifikasi keluhan (opsional ringan)
+scikit-learn>=1.3.0
+
+# Excel & utils
+openpyxl>=3.1.0
+Pillow>=10.0.0
+python-dotenv>=1.0.0
