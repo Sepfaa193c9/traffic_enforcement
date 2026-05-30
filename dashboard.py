@@ -16,6 +16,16 @@ import sqlite3
 import os
 import sys
 
+# Auto-generate demo data jika database kosong/tidak ada
+if not os.path.exists('violations.db') or os.path.getsize('violations.db') < 1000:
+    try:
+        print("[*] Database kosong, generate data demo...")
+        import subprocess
+        subprocess.run([sys.executable, "generate_demo_data.py", "--count", "300", "--days", "30"], check=True)
+        print("[✓] Data demo selesai")
+    except Exception as e:
+        print(f"[!] Error generate data: {e}")
+        st.warning("Database kosong. Jalankan: python generate_demo_data.py")
 # Tambahkan direktori saat ini ke path
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -28,6 +38,7 @@ from database import (
     generate_etl_ticket, get_repeat_offenders,
     DatabaseManager
 )
+
 
 # ============================================================
 # PAGE CONFIG
