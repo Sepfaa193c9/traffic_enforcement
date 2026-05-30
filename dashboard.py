@@ -38,7 +38,7 @@ def _init_database():
     if not os.path.exists(DB_PATH) or os.path.getsize(DB_PATH) < 5000:
         try:
             print("[*] Database kosong, insert sample data...")
-            from sample_violations import insert_sample_data
+            from generate_demo_data import insert_sample_data
             insert_sample_data()
             print("[✓] Sample data inserted")
             return True
