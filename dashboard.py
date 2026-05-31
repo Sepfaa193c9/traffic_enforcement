@@ -33,22 +33,15 @@ from database import (
 # AUTO-GENERATE DATABASE JIKA TIDAK ADA
 # ============================================================
 @st.cache_resource
-def _init_database():
-    """Initialize database with sample data if not exists"""
-    if not os.path.exists(DB_PATH) or os.path.getsize(DB_PATH) < 5000:
-        try:
-            print("[*] Database kosong, insert sample data...")
-            from generate_demo_data import generate_demo_data
-            generate_demo_data(count=300, days_back=30)
-            print("[✓] Sample data inserted")
-            return True
-        except Exception as e:
-            print(f"[!] Error insert sample data: {e}")
-            return False
-    return True
 
-# Init database on startup
 _init_database()
+st.write("DB exists:", os.path.exists(DB_PATH))
+st.write("DB path:", DB_PATH)
+try:
+    df_test = get_violations_df(days_back=30)
+    st.write("Row count:", len(df_test))
+except Exception as e:
+    st.write("ERROR:", e)
 
 # ============================================================
 # PAGE CONFIG
