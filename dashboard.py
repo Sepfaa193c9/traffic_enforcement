@@ -706,28 +706,33 @@ def _load_yolo_model():
 
 
 def _grab_frame_mjpeg(stream_url: str):
-    """Ambil 1 frame via ffmpeg MJPEG — robust untuk resolusi dinamis."""
     import subprocess, shutil, io
     import numpy as np
     from PIL import Image
 
     if not shutil.which("ffmpeg"):
-        return None, "ffmpeg tidak ditemukan. Pastikan packages.txt berisi: ffmpeg"
+        return None, "ffmpeg tidak ditemukan"
 
     try:
         res = subprocess.run(
             ["ffmpeg", "-loglevel", "error",
+             "-reconnect", "1",
+             "-reconnect_streamed", "1", 
+             "-reconnect_delay_max", "5",
+             "-ss", "00:00:01",          # skip 1 detik pertama
              "-i", stream_url,
              "-frames:v", "1",
+             "-q:v", "2",
              "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
-            capture_output=True, timeout=15,
+            capture_output=True, timeout=45,
         )
         if not res.stdout:
-            return None, "ffmpeg tidak menghasilkan output (stream offline?)"
+            stderr = res.stderr.decode(errors="ignore")
+            return None, f"ffmpeg error: {stderr[-200:]}"
         img = Image.open(io.BytesIO(res.stdout)).convert("RGB")
         return np.array(img), None
     except subprocess.TimeoutExpired:
-        return None, "Timeout saat ambil frame (stream lambat?)"
+        return None, "Timeout (coba naikkan timeout atau ganti stream)"
     except Exception as e:
         return None, str(e)
 
