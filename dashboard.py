@@ -746,8 +746,6 @@ from detector import (
     _load_yolo_model,        # ← ini tidak ada di detector.py, harus pakai cara lain
 )
 
-    STREAM_URL = "https://www.youtube.com/live/AQd-p5hFtQo?si=IbHHVTbrYjplSOer"
-    VIDEO_ID   = "AQd-p5hFtQo"
 
     st.title("📱 Real-time Monitor")
 
