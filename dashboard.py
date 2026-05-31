@@ -55,7 +55,6 @@ _init_database()
 # ============================================================
 st.set_page_config(
     page_title="DISHUB DKI - Traffic Enforcement",
-    page_icon="🚦",
     layout="wide",
     initial_sidebar_state="expanded",
 )
