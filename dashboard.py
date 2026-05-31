@@ -91,7 +91,7 @@ st.markdown("""
     .sidebar-logo {
         text-align: left;
         padding: 10px 0 20px;
-        padding-left: 5px;
+        padding-left: 1px;
         font-size: 1.4em;
         font-weight: 700;
         color: #2d6a9f;
