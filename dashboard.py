@@ -737,8 +737,6 @@ def _grab_frame_mjpeg(stream_url: str):
 
 
 def page_realtime():
-    import subprocess, shutil
-    from collections import Counter
     import time as _time
 
     STREAM_URL = "https://www.youtube.com/live/AQd-p5hFtQo?si=IbHHVTbrYjplSOer"
@@ -750,8 +748,8 @@ def page_realtime():
     with col1:
         conf = st.slider("Confidence", 0.1, 0.9, 0.35, 0.05)
     with col2:
-        interval = st.selectbox("Refresh deteksi tiap", [3, 5, 10, 15], index=1,
-                                format_func=lambda x: f"{x}s")
+        refresh = st.selectbox("Refresh UI tiap", [1, 2, 3, 5], index=1,
+                               format_func=lambda x: f"{x}s")
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
         run = st.toggle("▶ Mulai Deteksi")
@@ -760,13 +758,12 @@ def page_realtime():
 
     left, right = st.columns([1, 1])
 
+    # ── Kiri: embed YouTube ────────────────────────────────
     with left:
         st.subheader("📺 Live Feed")
         embed_html = f"""
         <div>
-            <iframe
-                width="100%"
-                height="315"
+            <iframe width="100%" height="315"
                 src="https://www.youtube.com/embed/{VIDEO_ID}?autoplay=1&mute=0&rel=0"
                 frameborder="0"
                 allow="autoplay; encrypted-media; fullscreen"
@@ -783,76 +780,65 @@ def page_realtime():
         """
         st.components.v1.html(embed_html, height=360)
 
+    # ── Kanan: hasil deteksi YOLO ──────────────────────────
     with right:
         st.subheader("🤖 Hasil Deteksi YOLO")
         frame_ph = st.empty()
         stat_ph  = st.empty()
         info_ph  = st.empty()
+        status_ph = st.empty()
 
-        if not run:
-            frame_ph.info("Aktifkan toggle ▶ Mulai Deteksi untuk memulai.")
+        # Init bridge di session_state agar persist antar rerun
+        if "detector_bridge" not in st.session_state:
+            from detector import StreamlitDetectorBridge
+            st.session_state.detector_bridge = StreamlitDetectorBridge()
+
+        bridge = st.session_state.detector_bridge
+
+        if run:
+            # Start jika belum jalan
+            if not bridge.is_running:
+                status_ph.info("Menghubungkan ke stream...")
+                bridge.start(STREAM_URL, conf=conf)
+
+            # Tampilkan error jika ada
+            if bridge.error:
+                frame_ph.error(f"Error: {bridge.error}")
+            elif bridge.latest_frame is not None:
+                with bridge._lock:
+                    frame  = bridge.latest_frame.copy()
+                    stats  = bridge.latest_stats.copy()
+
+                frame_ph.image(frame, channels="RGB",
+                               use_container_width=True,
+                               caption=f"Deteksi: {stats.get('ts', '')}")
+
+                vehicles = {VEHICLE_LABELS.get(k, k): v
+                            for k, v in stats.get("vehicles", {}).items()}
+
+                with stat_ph.container():
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Terdeteksi", stats.get("total", 0))
+                    c2.metric("Kendaraan",  sum(vehicles.values()))
+                    c3.metric("Lainnya",    stats.get("others", 0))
+
+                if vehicles:
+                    info_ph.markdown("  ".join(
+                        f"**{k}** {v}" for k, v in vehicles.items()
+                    ))
+                status_ph.empty()
+            else:
+                frame_ph.info("Menunggu frame pertama... (5-15 detik)")
+
+            # Auto-refresh UI
+            _time.sleep(refresh)
+            st.rerun()
+
         else:
-            refresh_count = st.session_state.get("rt_count", 0)
-
-            if st.session_state.get("rt_resolved") is None:
-                if not shutil.which("yt-dlp"):
-                    frame_ph.error("yt-dlp tidak tersedia.")
-                else:
-                    with st.spinner("Mengambil stream URL..."):
-                        res = subprocess.run(
-                            ["yt-dlp", "-g", "-f", "best[height<=480]/best",
-                             "--no-warnings", "--no-playlist", STREAM_URL],
-                            capture_output=True, text=True, timeout=30,
-                        )
-                    if res.returncode == 0:
-                        urls = [u.strip() for u in res.stdout.strip().splitlines() if u.strip()]
-                        if urls:
-                            st.session_state.rt_resolved = urls[0]
-                        else:
-                            frame_ph.error("Tidak ada URL dari yt-dlp.")
-                    else:
-                        frame_ph.error(f"yt-dlp gagal: {res.stderr.strip()}")
-
-            stream_url = st.session_state.get("rt_resolved")
-
-            if stream_url:
-                with st.spinner("Mengambil frame..."):
-                    frame_rgb, err = _grab_frame_mjpeg(stream_url)
-
-                if frame_rgb is None:
-                    frame_ph.warning(f"Gagal ambil frame: {err}")
-                    st.session_state.rt_resolved = None
-                else:
-                    try:
-                        from detector import process_single_frame
-                        result    = process_single_frame(frame_rgb, conf=conf)
-                        annotated = result["annotated"]
-                        n         = result["total"]
-                        vehicles  = {VEHICLE_LABELS.get(k, k): v
-                                     for k, v in result["vehicles"].items()}
-                        others    = result["others"]
-                    except Exception as e:
-                        frame_ph.error(f"Detector error: {e}")
-                        return
-
-                    frame_ph.image(annotated, channels="RGB",
-                                   use_container_width=True,
-                                   caption=f"Deteksi: {datetime.now().strftime('%H:%M:%S')}")
-
-                    with stat_ph.container():
-                        c1, c2, c3 = st.columns(3)
-                        c1.metric("Terdeteksi", n)
-                        c2.metric("Kendaraan", sum(vehicles.values()))
-                        c3.metric("Lainnya", others)
-
-                    if vehicles:
-                        info_ph.markdown("  ".join(
-                            f"**{k}** {v}" for k, v in vehicles.items()
-                        ))
-
-                    st.session_state.rt_count = refresh_count + 1
-                    _time.sleep(interval)
-                    st.rerun()
+            # Stop bridge jika toggle dimatikan
+            if bridge.is_running:
+                bridge.stop()
+            frame_ph.info("Aktifkan toggle ▶ Mulai Deteksi untuk memulai.")
 
     # ── Section: Demo Detector ─────────────────────────────
     st.markdown("---")
@@ -880,16 +866,19 @@ def page_realtime():
                 with st.spinner("Menjalankan detector..."):
                     try:
                         from detector import process_single_frame
-                        result = process_single_frame(frame_rgb, conf=conf)
-                        st.image(result["annotated"], channels="RGB", use_container_width=True)
+                        result   = process_single_frame(frame_rgb, conf=conf)
                         vehicles = {VEHICLE_LABELS.get(k, k): v
                                     for k, v in result["vehicles"].items()}
+                        st.image(result["annotated"], channels="RGB",
+                                 use_container_width=True)
                         c1, c2, c3 = st.columns(3)
                         c1.metric("Terdeteksi", result["total"])
-                        c2.metric("Kendaraan", sum(vehicles.values()))
-                        c3.metric("Lainnya", result["others"])
+                        c2.metric("Kendaraan",  sum(vehicles.values()))
+                        c3.metric("Lainnya",    result["others"])
                         if vehicles:
-                            st.markdown("  ".join(f"**{k}** {v}" for k, v in vehicles.items()))
+                            st.markdown("  ".join(
+                                f"**{k}** {v}" for k, v in vehicles.items()
+                            ))
                     except Exception as e:
                         st.error(f"Detector error: {e}")
 
@@ -918,12 +907,12 @@ def page_realtime():
 
             if st.button("Jalankan Deteksi Video", type="primary"):
                 from detector import process_single_frame
-                cap      = cv2.VideoCapture(tmp_path)
-                total    = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                step     = max(1, total // max_frames)
-                progress = st.progress(0)
-                cols     = st.columns(3)
-                col_idx  = 0
+                cap       = cv2.VideoCapture(tmp_path)
+                total     = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                step      = max(1, total // max_frames)
+                progress  = st.progress(0)
+                cols      = st.columns(3)
+                col_idx   = 0
                 frame_idx = 0
 
                 while cap.isOpened():
