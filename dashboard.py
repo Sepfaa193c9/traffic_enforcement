@@ -91,7 +91,7 @@ st.markdown("""
     /* NAVBAR HORIZONTAL */
     .navbar-container {
         background: linear-gradient(90deg, #1e3a5f 0%, #2d6a9f 100%);
-        border-radius: 30px;
+        border-radius: 12px;
         padding: 15px 20px;
         margin-bottom: 25px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.15);
@@ -101,8 +101,8 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 15px;
-        padding-bottom: 10px;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
         border-bottom: 2px solid rgba(255,255,255,0.2);
     }
 
