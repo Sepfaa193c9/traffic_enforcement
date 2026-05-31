@@ -702,125 +702,129 @@ def page_heatmap(df: pd.DataFrame):
 # ============================================================
 
 def page_realtime():
-    st.title("Real-time Monitor")
+    st.title("📱 Real-time Monitor")
 
-    st.info("""
-    **Live monitoring** membutuhkan `detector.py` sedang berjalan di terminal.
+    url = st.text_input(
+        "Stream URL",
+        placeholder="https://www.youtube.com/watch?v=... atau URL HLS .m3u8",
+    )
 
-    ```bash
-    python detector.py --no-display
-    ```
+    col1, col2 = st.columns(2)
+    with col1:
+        interval = st.selectbox("Refresh tiap", [1, 2, 3, 5], index=1,
+                                format_func=lambda x: f"{x} detik")
+    with col2:
+        conf = st.slider("Confidence", 0.1, 0.9, 0.35)
 
-    Dashboard ini akan auto-refresh setiap 5 detik untuk menampilkan deteksi terbaru.
-    """)
+    run = st.toggle("▶ Mulai Stream")
 
-    auto_refresh = st.checkbox("Auto-refresh (5 detik)", value=False)
-    if auto_refresh:
-        st.caption("Auto-refresh aktif...")
-        time.sleep(5)
-        st.experimental_rerun()
+    frame_placeholder = st.empty()
+    stats_placeholder = st.empty()
 
-    st.markdown("---")
-    st.subheader("Deteksi Terbaru (Live)")
-
-    # Ambil 20 data paling baru tanpa cache
-    live_df = get_violations_df(days_back=1)
-    if live_df.empty:
-        st.warning("Belum ada data hari ini. Pastikan detector.py berjalan.")
+    if not run or not url:
+        frame_placeholder.info("Masukkan URL dan aktifkan stream.")
         return
 
-    live_df["timestamp"] = pd.to_datetime(live_df["timestamp"])
-    live_df = live_df.sort_values("timestamp", ascending=False).head(20)
-    live_df["vtype_label"]   = live_df["violation_type"].map(VIOLATION_LABELS).fillna(live_df["violation_type"])
-    live_df["vehicle_label"] = live_df["vehicle_type"].map(VEHICLE_LABELS).fillna(live_df["vehicle_type"])
+    # Resolve YouTube URL → direct stream
+    import subprocess, shutil
+    stream_url = url
+    if "youtube.com" in url or "youtu.be" in url:
+        if not shutil.which("yt-dlp"):
+            st.error("yt-dlp tidak tersedia di server.")
+            return
+        with st.spinner("Mengambil stream URL..."):
+            res = subprocess.run(
+                ["yt-dlp", "-g", "-f", "best[height<=480]/best",
+                 "--no-warnings", "--no-playlist", url],
+                capture_output=True, text=True, timeout=30
+            )
+        if res.returncode != 0:
+            st.error(f"Gagal resolve URL: {res.stderr.strip()}")
+            return
+        urls = [u.strip() for u in res.stdout.strip().splitlines() if u.strip()]
+        if not urls:
+            st.error("Tidak ada stream yang didapat.")
+            return
+        stream_url = urls[0]
+        st.success("Stream URL didapat!")
 
-    for _, row in live_df.iterrows():
-        with st.container():
-            c1, c2, c3, c4, c5 = st.columns([2, 2, 2, 2, 1])
-            c1.markdown(f"`{row['timestamp'].strftime('%H:%M:%S')}`")
-            c2.markdown(f"`{row['camera_id']}`")
-            c3.markdown(f"{row['vehicle_label']}")
-            c4.markdown(f"**{row['license_plate']}**")
-            c5.markdown(f"{row['vtype_label']}")
-        st.divider()
+    # Load model (cache agar tidak reload tiap frame)
+    @st.cache_resource
+    def load_model():
+        from ultralytics import YOLO
+        return YOLO("yolov8n.pt")
 
-    st.subheader("Statistik Hari Ini")
-    today_stats = {
-        "Total": len(live_df),
-        "Unik Plat": live_df["license_plate"].nunique(),
-    }
-    col1, col2 = st.columns(2)
-    col1.metric("Deteksi Hari Ini", today_stats["Total"])
-    col2.metric("Plat Unik", today_stats["Unik Plat"])
+    model = load_model()
 
-# ============================================================
-# PAGE 7 — SETTINGS
-# ============================================================
+    # Baca 1 frame via ffmpeg pipe
+    def grab_frame(src_url):
+        if not shutil.which("ffmpeg"):
+            return None
+        cmd = [
+            "ffmpeg", "-loglevel", "error",
+            "-i", src_url,
+            "-frames:v", "1",       # ambil 1 frame saja
+            "-f", "image2pipe",
+            "-pix_fmt", "bgr24",
+            "-vcodec", "rawvideo", "-",
+        ]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, timeout=10)
+            raw = proc.stdout
+            if not raw:
+                return None
+            import numpy as np
+            # Decode ukuran dari panjang raw (480p = 640x480x3)
+            n = len(raw)
+            # Coba beberapa resolusi umum
+            for w, h in [(640,480),(854,480),(1280,720),(1920,1080)]:
+                if n == w * h * 3:
+                    frame = np.frombuffer(raw, dtype=np.uint8).reshape((h, w, 3))
+                    return frame
+            # Fallback: decode via Pillow
+            from PIL import Image
+            import io
+            proc2 = subprocess.run(
+                ["ffmpeg", "-loglevel", "error", "-i", src_url,
+                 "-frames:v", "1", "-f", "mjpeg", "-"],
+                capture_output=True, timeout=10
+            )
+            img = Image.open(io.BytesIO(proc2.stdout))
+            import numpy as np
+            return np.array(img)[:, :, ::-1]
+        except Exception as e:
+            st.warning(f"Frame error: {e}")
+            return None
 
-def page_settings():
-    st.title("Settings & Informasi Sistem")
+    # Loop display
+    from streamlit_autorefresh import st_autorefresh
+    st_autorefresh(interval=interval * 1000, key="realtime_refresh")
 
-    tab1, tab2, tab3 = st.tabs(["Konfigurasi", "Database Info", "System Info"])
+    with st.spinner("Mengambil frame..."):
+        frame = grab_frame(stream_url)
 
-    with tab1:
-        st.subheader("Konfigurasi Aktif")
-        st.json({
-            "VIDEO_SOURCE": str(0),
-            "YOLO_MODEL": YOLO_MODEL,
-            "ACTIVE_CAMERA_ID": ACTIVE_CAMERA_ID,
-            "CAMERA_LOCATIONS": {k: v["name"] for k, v in CAMERA_LOCATIONS.items()},
-            "VIOLATION_TYPES": VIOLATION_TYPES,
-        })
-        st.info("Edit `config.py` untuk mengubah konfigurasi sistem.")
+    if frame is None:
+        frame_placeholder.warning("Gagal ambil frame. Stream mungkin tidak tersedia.")
+        return
 
-    with tab2:
-        st.subheader("Statistik Database")
-        if os.path.exists(DB_PATH):
-            size_mb = os.path.getsize(DB_PATH) / 1024 / 1024
-            st.metric("Ukuran Database", f"{size_mb:.2f} MB")
+    # Inferensi YOLO
+    import cv2
+    results = model(frame, conf=conf, verbose=False)[0]
+    annotated = results.plot()
+    annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
 
-            conn = sqlite3.connect(DB_PATH)
-            tables = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
-            st.markdown(f"**Tabel:** {', '.join([t[0] for t in tables])}")
+    frame_placeholder.image(annotated_rgb, channels="RGB", use_container_width=True)
 
-            for tname in [t[0] for t in tables]:
-                count = conn.execute(f"SELECT COUNT(*) FROM {tname}").fetchone()[0]
-                st.markdown(f"- `{tname}`: **{count:,}** baris")
-            conn.close()
-
-            st.markdown("---")
-            col_a, col_b = st.columns(2)
-            with col_a:
-                if st.button("Hapus Data Lama (> 1 tahun)", use_container_width=True):
-                    DatabaseManager().purge_old_records(365)
-                    st.success("Data lama dihapus.")
-                    st.cache_data.clear()
-            with col_b:
-                if st.button("Reset Semua Data", type="secondary", use_container_width=True):
-                    st.warning("Yakin? Ini akan menghapus SEMUA data!")
-                    if st.button("Konfirmasi Reset"):
-                        os.remove(DB_PATH)
-                        DatabaseManager()
-                        st.success("Database di-reset.")
-                        st.cache_data.clear()
-        else:
-            st.warning("Database belum ditemukan. Jalankan `python database.py` terlebih dahulu.")
-
-    with tab3:
-        st.subheader("Tech Stack")
-        tech_data = {
-            "Komponen": ["Object Detection", "Tracking", "ANPR", "Database", "Dashboard", "Maps", "Charts", "Reports"],
-            "Technology": ["YOLOv8 (Ultralytics)", "ByteTrack (Supervision)", "EasyOCR", "SQLite", "Streamlit", "Folium", "Plotly", "OpenPyXL"],
-            "Status": ["Free"] * 8,
-        }
-        st.dataframe(pd.DataFrame(tech_data), use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-        st.markdown("**Version:** 1.1.0 | **Last Updated:** May 2026")
-        st.markdown("**Built for:** AI Open Innovation Challenge 2026 - DISHUB DKI Jakarta")
-
+    # Statistik singkat
+    n_detected = len(results.boxes)
+    classes = [model.names[int(c)] for c in results.boxes.cls]
+    from collections import Counter
+    counts = Counter(classes)
+    stats_placeholder.markdown(
+        f"**Terdeteksi:** {n_detected} objek — " +
+        " | ".join(f"{v}x {k}" for k, v in counts.items())
+    )
+            
 # ============================================================
 # MAIN
 # ============================================================
