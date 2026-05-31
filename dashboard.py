@@ -216,7 +216,7 @@ def render_navbar() -> tuple[str, int]:
     <div class="navbar-container" style="padding: 20px 30px; margin-bottom: 20px;">
         <div class="navbar-header" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0; display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <p class="navbar-title" style="font-size: 2em; margin: 0;">EDITH</p>
+                <p class="navbar-title" style="font-size: 3em; margin: 0;">EDITH</p>
                 <p class="navbar-subtitle" style="font-size: 1em; opacity: 0.9; margin: 5px 0 0 0;">Electronic Detection & Intelligent Traffic Hub - AI Open Innovation Challenge 2026</p>
             </div>
             <div style="text-align: right; color: white; opacity: 0.8; font-size: 0.9em;">
