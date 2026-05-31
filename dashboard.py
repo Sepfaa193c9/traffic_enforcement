@@ -105,9 +105,9 @@ st.markdown("""
 # ============================================================
 
 VIOLATION_LABELS = {
-    "busway_violation":    "Jalur Busway",
+    "busway_violation":    "Jalur Bus",
     "bike_lane_violation": "Jalur Sepeda",
-    "illegal_parking":     "Parkir Liar",
+    "illegal_parking":     "Parkir Illegal",
     "wrong_way":           "Lawan Arah",
 }
 
