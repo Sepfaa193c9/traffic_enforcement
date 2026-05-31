@@ -204,10 +204,10 @@ def page_dashboard(df: pd.DataFrame, stats: dict):
         st.metric("Total Pelanggaran", f"{stats['total']:,}")
     with col2:
         busway = stats["per_type"].get("busway_violation", 0)
-        st.metric("Jalur Busway", f"{busway:,}")
+        st.metric("Jalur Bus", f"{busway:,}")
     with col3:
         parking = stats["per_type"].get("illegal_parking", 0)
-        st.metric("Parkir Liar", f"{parking:,}")
+        st.metric("Parkir Illegal", f"{parking:,}")
     with col4:
         st.metric("Plat Unik", f"{stats['unique_plates']:,}")
     with col5:
@@ -333,7 +333,7 @@ def page_analytics(df: pd.DataFrame, days_back: int):
             fig_cross.update_layout(xaxis_title="", legend_title="Jenis Pelanggaran")
             st.plotly_chart(fig_cross, use_container_width=True)
 
-        st.subheader("Durasi Parkir Liar")
+        st.subheader("Durasi Parkir Illegal")
         parking_df = df[df["violation_type"] == "illegal_parking"]
         if not parking_df.empty:
             fig_dur = px.histogram(parking_df, x="duration_seconds",
@@ -341,7 +341,7 @@ def page_analytics(df: pd.DataFrame, days_back: int):
                                    labels={"duration_seconds": "Durasi (detik)"})
             st.plotly_chart(fig_dur, use_container_width=True)
         else:
-            st.info("Tidak ada data parkir liar dalam periode ini.")
+            st.info("Tidak ada data parkir Illegal dalam periode ini.")
 
     with tab3:
         st.subheader("Tren Harian per Kamera")
