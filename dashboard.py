@@ -699,129 +699,152 @@ def page_heatmap(df: pd.DataFrame):
 # PAGE 6 — REAL-TIME MONITOR
 # ============================================================
 
+@st.cache_resource
+def _load_yolo_model():
+    from ultralytics import YOLO
+    return YOLO("yolov8n.pt")
+
+
+def _grab_frame_mjpeg(stream_url: str):
+    """Ambil 1 frame via ffmpeg MJPEG — robust untuk resolusi dinamis."""
+    import subprocess, shutil, io
+    import numpy as np
+    from PIL import Image
+
+    if not shutil.which("ffmpeg"):
+        return None, "ffmpeg tidak ditemukan. Pastikan packages.txt berisi: ffmpeg"
+
+    try:
+        res = subprocess.run(
+            ["ffmpeg", "-loglevel", "error",
+             "-i", stream_url,
+             "-frames:v", "1",
+             "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
+            capture_output=True, timeout=15,
+        )
+        if not res.stdout:
+            return None, "ffmpeg tidak menghasilkan output (stream offline?)"
+        img = Image.open(io.BytesIO(res.stdout)).convert("RGB")
+        return np.array(img), None
+    except subprocess.TimeoutExpired:
+        return None, "Timeout saat ambil frame (stream lambat?)"
+    except Exception as e:
+        return None, str(e)
+
+
 def page_realtime():
+    import subprocess, shutil
+    from collections import Counter
+
     st.title("📱 Real-time Monitor")
 
+    # ── Input ──────────────────────────────────────────────
     url = st.text_input(
         "Stream URL",
-        placeholder="https://www.youtube.com/watch?v=... atau URL HLS .m3u8",
+        placeholder="https://www.youtube.com/watch?v=...  atau  URL HLS .m3u8",
     )
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
-        interval = st.selectbox("Refresh tiap", [1, 2, 3, 5], index=1,
-                                format_func=lambda x: f"{x} detik")
+        conf = st.slider("Confidence", 0.1, 0.9, 0.35, 0.05)
     with col2:
-        conf = st.slider("Confidence", 0.1, 0.9, 0.35)
+        interval = st.selectbox("Refresh tiap", [2, 3, 5, 10], index=1,
+                                format_func=lambda x: f"{x}s")
+    with col3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        run = st.toggle("▶ Mulai")
 
-    run = st.toggle("▶ Mulai Stream")
+    st.markdown("---")
 
-    frame_placeholder = st.empty()
-    stats_placeholder = st.empty()
+    frame_ph = st.empty()
+    info_ph  = st.empty()
+    stat_ph  = st.empty()
 
-    if not run or not url:
-        frame_placeholder.info("Masukkan URL dan aktifkan stream.")
+    if not run:
+        frame_ph.info("Masukkan URL stream lalu aktifkan toggle ▶ Mulai.")
         return
 
-    # Resolve YouTube URL → direct stream
-    import subprocess, shutil
-    stream_url = url
-    if "youtube.com" in url or "youtu.be" in url:
-        if not shutil.which("yt-dlp"):
-            st.error("yt-dlp tidak tersedia di server.")
-            return
-        with st.spinner("Mengambil stream URL..."):
-            res = subprocess.run(
-                ["yt-dlp", "-g", "-f", "best[height<=480]/best",
-                 "--no-warnings", "--no-playlist", url],
-                capture_output=True, text=True, timeout=30
-            )
-        if res.returncode != 0:
-            st.error(f"Gagal resolve URL: {res.stderr.strip()}")
-            return
-        urls = [u.strip() for u in res.stdout.strip().splitlines() if u.strip()]
-        if not urls:
-            st.error("Tidak ada stream yang didapat.")
-            return
-        stream_url = urls[0]
-        st.success("Stream URL didapat!")
+    if not url.strip():
+        frame_ph.warning("URL tidak boleh kosong.")
+        return
 
-    # Load model (cache agar tidak reload tiap frame)
-    @st.cache_resource
-    def load_model():
-        from ultralytics import YOLO
-        return YOLO("yolov8n.pt")
+    # ── Resolve YouTube → direct URL (simpan di session_state) ──
+    if (st.session_state.get("rt_source") != url):
+        st.session_state.rt_source   = url
+        st.session_state.rt_resolved = None   # reset kalau URL berubah
 
-    model = load_model()
+    if st.session_state.get("rt_resolved") is None:
+        if "youtube.com" in url or "youtu.be" in url:
+            if not shutil.which("yt-dlp"):
+                frame_ph.error("yt-dlp tidak tersedia. Tambahkan ke requirements.txt: yt-dlp")
+                return
+            with st.spinner("Mengambil stream URL dari YouTube..."):
+                res = subprocess.run(
+                    ["yt-dlp", "-g", "-f", "best[height<=480]/best",
+                     "--no-warnings", "--no-playlist", url],
+                    capture_output=True, text=True, timeout=30,
+                )
+            if res.returncode != 0:
+                frame_ph.error(f"yt-dlp gagal: {res.stderr.strip() or res.stdout.strip()}")
+                return
+            urls = [u.strip() for u in res.stdout.strip().splitlines() if u.strip()]
+            if not urls:
+                frame_ph.error("Tidak ada stream URL yang didapat dari yt-dlp.")
+                return
+            st.session_state.rt_resolved = urls[0]
+        else:
+            st.session_state.rt_resolved = url   # HLS/m3u8 langsung
 
-    # Baca 1 frame via ffmpeg pipe
-    def grab_frame(src_url):
-        if not shutil.which("ffmpeg"):
-            return None
-        cmd = [
-            "ffmpeg", "-loglevel", "error",
-            "-i", src_url,
-            "-frames:v", "1",       # ambil 1 frame saja
-            "-f", "image2pipe",
-            "-pix_fmt", "bgr24",
-            "-vcodec", "rawvideo", "-",
-        ]
-        try:
-            proc = subprocess.run(cmd, capture_output=True, timeout=10)
-            raw = proc.stdout
-            if not raw:
-                return None
-            import numpy as np
-            # Decode ukuran dari panjang raw (480p = 640x480x3)
-            n = len(raw)
-            # Coba beberapa resolusi umum
-            for w, h in [(640,480),(854,480),(1280,720),(1920,1080)]:
-                if n == w * h * 3:
-                    frame = np.frombuffer(raw, dtype=np.uint8).reshape((h, w, 3))
-                    return frame
-            # Fallback: decode via Pillow
-            from PIL import Image
-            import io
-            proc2 = subprocess.run(
-                ["ffmpeg", "-loglevel", "error", "-i", src_url,
-                 "-frames:v", "1", "-f", "mjpeg", "-"],
-                capture_output=True, timeout=10
-            )
-            img = Image.open(io.BytesIO(proc2.stdout))
-            import numpy as np
-            return np.array(img)[:, :, ::-1]
-        except Exception as e:
-            st.warning(f"Frame error: {e}")
-            return None
+    stream_url = st.session_state.rt_resolved
 
-    # Loop display
-    from streamlit_autorefresh import st_autorefresh
-    st_autorefresh(interval=interval * 1000, key="realtime_refresh")
+    # ── Auto-refresh (tanpa streamlit-autorefresh) ──
+    # Pakai query_params trick — tidak butuh package tambahan
+    import time as _time
+    refresh_count = st.session_state.get("rt_count", 0)
 
+    # ── Ambil frame ────────────────────────────────────────
     with st.spinner("Mengambil frame..."):
-        frame = grab_frame(stream_url)
+        frame_rgb, err = _grab_frame_mjpeg(stream_url)
 
-    if frame is None:
-        frame_placeholder.warning("Gagal ambil frame. Stream mungkin tidak tersedia.")
+    if frame_rgb is None:
+        frame_ph.warning(f"Gagal ambil frame: {err}")
+        # Kalau YouTube, mungkin URL expired → resolve ulang next run
+        if "youtube.com" in url or "youtu.be" in url:
+            st.session_state.rt_resolved = None
         return
 
-    # Inferensi YOLO
-    import cv2
-    results = model(frame, conf=conf, verbose=False)[0]
-    annotated = results.plot()
-    annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+    # ── YOLO inference ─────────────────────────────────────
+    try:
+        model    = _load_yolo_model()
+        results  = model(frame_rgb, conf=conf, verbose=False)[0]
+        annotated = results.plot()   # sudah RGB
+    except Exception as e:
+        frame_ph.error(f"YOLO error: {e}")
+        return
 
-    frame_placeholder.image(annotated_rgb, channels="RGB", use_container_width=True)
+    frame_ph.image(annotated, channels="RGB", use_container_width=True,
+                   caption=f"{datetime.now().strftime('%H:%M:%S')}")
 
-    # Statistik singkat
-    n_detected = len(results.boxes)
-    classes = [model.names[int(c)] for c in results.boxes.cls]
-    from collections import Counter
-    counts = Counter(classes)
-    stats_placeholder.markdown(
-        f"**Terdeteksi:** {n_detected} objek — " +
-        " | ".join(f"{v}x {k}" for k, v in counts.items())
-    )
+    # ── Stats ──────────────────────────────────────────────
+    n   = len(results.boxes)
+    cls = [model.names[int(c)] for c in results.boxes.cls]
+    cnt = Counter(cls)
+    vehicle_keys = {"car", "motorcycle", "bus", "truck", "bicycle"}
+    vehicles = {VEHICLE_LABELS.get(k, k): v for k, v in cnt.items() if k in vehicle_keys}
+    others   = sum(v for k, v in cnt.items() if k not in vehicle_keys)
+
+    c1, c2, c3 = stat_ph.columns(3)
+    c1.metric("Terdeteksi", n)
+    c2.metric("Kendaraan", sum(vehicles.values()))
+    c3.metric("Lainnya", others)
+
+    if vehicles:
+        info_ph.markdown("  ".join(f"**{k}** {v}" for k, v in vehicles.items()))
+
+    # ── Auto-refresh manual (st.rerun setelah delay) ───────
+    st.session_state.rt_count = refresh_count + 1
+    _time.sleep(interval)
+    st.rerun()
             
 # ============================================================
 # MAIN
