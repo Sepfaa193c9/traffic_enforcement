@@ -221,7 +221,7 @@ def render_navbar() -> tuple[str, int]:
         <div class="navbar-container">
             <div class="navbar-header">
                 <div>
-                    <p class="navbar-title">🚗 DISHUB DKI Jakarta</p>
+                    <p class="navbar-title">DISHUB DKI Jakarta</p>
                     <p class="navbar-subtitle">Traffic Enforcement System</p>
                 </div>
             </div>
@@ -230,13 +230,13 @@ def render_navbar() -> tuple[str, int]:
     
     # Navigation items
     nav_items = [
-        "📊 Dashboard",
-        "📈 Analytics",
-        "🎫 E-TLE Integration",
-        "📋 Reports",
-        "🗺️ Heatmap",
-        "📱 Real-time Monitor",
-        "⚙️ Settings",
+        "Dashboard",
+        "Analytics",
+        "E-TLE Integration",
+        "Reports",
+        "Heatmap",
+        "Real-time Monitor",
+        "Settings",
     ]
     
     # Store page state in session
@@ -269,7 +269,7 @@ def render_navbar() -> tuple[str, int]:
         )
     
     with col_refresh:
-        if st.button("🔄 Refresh", use_container_width=True):
+        if st.button("Refresh", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
     
