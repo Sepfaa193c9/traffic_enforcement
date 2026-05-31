@@ -55,7 +55,7 @@ _init_database()
 # ============================================================
 st.set_page_config(
     page_title="DISHUB DKI - Traffic Enforcement",
-    page_icon="",
+    page_icon="🚦",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -105,9 +105,9 @@ st.markdown("""
 # ============================================================
 
 VIOLATION_LABELS = {
-    "busway_violation":    "Jalur Bus",
+    "busway_violation":    "Jalur Busway",
     "bike_lane_violation": "Jalur Sepeda",
-    "illegal_parking":     "Parkir Illegal",
+    "illegal_parking":     "Parkir Liar",
     "wrong_way":           "Lawan Arah",
 }
 
@@ -143,7 +143,7 @@ def load_stats(days_back: int = 30) -> dict:
     return get_statistics(days_back=days_back)
 
 def empty_state(msg: str = "Belum ada data. Jalankan `generate_demo_data.py` terlebih dahulu."):
-    st.info(f" {msg}", icon=)
+    st.info(f"{msg}")
 
 # ============================================================
 # SIDEBAR
@@ -171,16 +171,16 @@ def render_sidebar() -> tuple[str, int]:
 
         st.markdown("---")
         days_back = st.select_slider(
-            "⏱️ Periode Data",
+            "Periode Data",
             options=[1, 3, 7, 14, 30, 60, 90],
             value=30,
             format_func=lambda x: f"{x} hari",
         )
 
         st.markdown("---")
-        st.caption(f"🕐 {datetime.now().strftime('%d %b %Y, %H:%M')}")
-        st.caption(f" DB: `{os.path.basename(DB_PATH)}`")
-        if st.button(" Refresh Data", use_container_width=True):
+        st.caption(f"{datetime.now().strftime('%d %b %Y, %H:%M')}")
+        st.caption(f"DB: `{os.path.basename(DB_PATH)}`")
+        if st.button("Refresh Data", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
@@ -191,7 +191,7 @@ def render_sidebar() -> tuple[str, int]:
 # ============================================================
 
 def page_dashboard(df: pd.DataFrame, stats: dict):
-    st.title("📊 Dashboard Utama")
+    st.title("Dashboard Utama")
     st.caption(f"Sistem deteksi pelanggaran lalu lintas otomatis — {datetime.now().strftime('%d %B %Y')}")
 
     if df.empty:
@@ -204,7 +204,7 @@ def page_dashboard(df: pd.DataFrame, stats: dict):
         st.metric("Total Pelanggaran", f"{stats['total']:,}")
     with col2:
         busway = stats["per_type"].get("busway_violation", 0)
-        st.metric("Jalur Bus", f"{busway:,}")
+        st.metric("Jalur Busway", f"{busway:,}")
     with col3:
         parking = stats["per_type"].get("illegal_parking", 0)
         st.metric("Parkir Liar", f"{parking:,}")
@@ -265,7 +265,7 @@ def page_dashboard(df: pd.DataFrame, stats: dict):
     st.plotly_chart(fig_line, use_container_width=True)
 
     # Recent violations table
-    st.subheader("🔴 Pelanggaran Terbaru")
+    st.subheader("Pelanggaran Terbaru")
     recent = df.head(15)[["timestamp", "camera_id", "vehicle_label", "license_plate",
                            "vtype_label", "duration_seconds", "etl_status"]].copy()
     recent.columns = ["Waktu", "Kamera", "Kendaraan", "Plat", "Pelanggaran", "Durasi (s)", "Status E-TLE"]
@@ -288,7 +288,7 @@ def page_analytics(df: pd.DataFrame, days_back: int):
     )
 
     with tab1:
-        st.subheader("Heatmap Jam × Hari")
+        st.subheader("Heatmap Jam x Hari")
         days_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
         pivot = df.pivot_table(index="day_name", columns="hour", values="id",
                                aggfunc="count", fill_value=0)
@@ -382,7 +382,7 @@ def page_analytics(df: pd.DataFrame, days_back: int):
                 offenders.head(15),
                 x="license_plate", y="count",
                 color="risk_level",
-                color_discrete_map={"🔴 Tinggi": "#ff4b4b", "🟠 Sedang": "#ffa500", "🟡 Rendah": "#ffd700"},
+                color_discrete_map={"Tinggi": "#ff4b4b", "Sedang": "#ffa500", "Rendah": "#ffd700"},
                 text="count",
                 labels={"license_plate": "Plat Nomor", "count": "Jumlah Pelanggaran"},
             )
@@ -399,7 +399,7 @@ def page_analytics(df: pd.DataFrame, days_back: int):
 # ============================================================
 
 def page_etle(df: pd.DataFrame):
-    st.title("🎫 E-TLE Integration")
+    st.title("E-TLE Integration")
     st.caption("Electronic Traffic Law Enforcement — penerbitan tiket digital")
 
     if df.empty:
@@ -408,9 +408,9 @@ def page_etle(df: pd.DataFrame):
 
     col1, col2, col3 = st.columns(3)
     etl = df["etl_status"].value_counts()
-    col1.metric("⏳ Pending",  int(etl.get("pending", 0)))
-    col2.metric("📨 Issued",   int(etl.get("issued",  0)))
-    col3.metric("✅ Paid",     int(etl.get("paid",    0)))
+    col1.metric("Pending",  int(etl.get("pending", 0)))
+    col2.metric("Issued",   int(etl.get("issued",  0)))
+    col3.metric("Paid",     int(etl.get("paid",    0)))
 
     st.markdown("---")
 
@@ -435,7 +435,7 @@ def page_etle(df: pd.DataFrame):
     st.dataframe(display, use_container_width=True, hide_index=True)
 
     st.markdown("---")
-    st.subheader("📨 Terbitkan Tiket E-TLE")
+    st.subheader("Terbitkan Tiket E-TLE")
 
     col_a, col_b = st.columns([1, 2])
     with col_a:
@@ -450,7 +450,7 @@ def page_etle(df: pd.DataFrame):
 
     with col_b:
         pending_ids = df[df["etl_status"] == "pending"]["id"].tolist()
-        if pending_ids and st.button(f"📨 Terbitkan Semua Pending ({len(pending_ids)} tiket)",
+        if pending_ids and st.button(f"Terbitkan Semua Pending ({len(pending_ids)} tiket)",
                                      use_container_width=True):
             progress = st.progress(0)
             issued = 0
@@ -588,9 +588,9 @@ def page_heatmap(df: pd.DataFrame):
 
     with col2:
         st.subheader("Legenda")
-        st.markdown("🔴 **Merah** — > 50 pelanggaran")
-        st.markdown("🟠 **Oranye** — > 20 pelanggaran")
-        st.markdown("🟢 **Hijau** — ≤ 20 pelanggaran")
+        st.markdown("**Merah** — > 50 pelanggaran")
+        st.markdown("**Oranye** — > 20 pelanggaran")
+        st.markdown("**Hijau** — <= 20 pelanggaran")
         st.markdown("---")
         st.subheader("Hotspot")
         if not df.empty:
@@ -642,10 +642,10 @@ def page_realtime():
     for _, row in live_df.iterrows():
         with st.container():
             c1, c2, c3, c4, c5 = st.columns([2, 2, 2, 2, 1])
-            c1.markdown(f" `{row['timestamp'].strftime('%H:%M:%S')}`")
-            c2.markdown(f" `{row['camera_id']}`")
+            c1.markdown(f"`{row['timestamp'].strftime('%H:%M:%S')}`")
+            c2.markdown(f"`{row['camera_id']}`")
             c3.markdown(f"{row['vehicle_label']}")
-            c4.markdown(f" **{row['license_plate']}**")
+            c4.markdown(f"**{row['license_plate']}**")
             c5.markdown(f"{row['vtype_label']}")
         st.divider()
 
@@ -655,15 +655,15 @@ def page_realtime():
         "Unik Plat": live_df["license_plate"].nunique(),
     }
     col1, col2 = st.columns(2)
-    col1.metric(" Deteksi Hari Ini", today_stats["Total"])
-    col2.metric(" Plat Unik", today_stats["Unik Plat"])
+    col1.metric("Deteksi Hari Ini", today_stats["Total"])
+    col2.metric("Plat Unik", today_stats["Unik Plat"])
 
 # ============================================================
 # PAGE 7 — SETTINGS
 # ============================================================
 
 def page_settings():
-    st.title(" Settings & Informasi Sistem")
+    st.title("Settings & Informasi Sistem")
 
     tab1, tab2, tab3 = st.tabs(["Konfigurasi", "Database Info", "System Info"])
 
