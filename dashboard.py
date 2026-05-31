@@ -33,7 +33,6 @@ from database import (
 # AUTO-GENERATE DATABASE JIKA TIDAK ADA
 # ============================================================
 @st.cache_resource
-
 def _init_database():
     """Initialize database with sample data if not exists"""
     if not os.path.exists(DB_PATH) or os.path.getsize(DB_PATH) < 5000:
