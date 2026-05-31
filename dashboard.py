@@ -55,7 +55,7 @@ _init_database()
 # ============================================================
 st.set_page_config(
     page_title="DISHUB DKI - Traffic Enforcement",
-    page_icon="🚦",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -105,18 +105,18 @@ st.markdown("""
 # ============================================================
 
 VIOLATION_LABELS = {
-    "busway_violation":    "🚌 Jalur Busway",
-    "bike_lane_violation": "🚲 Jalur Sepeda",
-    "illegal_parking":     "🅿️ Parkir Liar",
-    "wrong_way":           "⛔ Lawan Arah",
+    "busway_violation":    "Jalur Bus",
+    "bike_lane_violation": "Jalur Sepeda",
+    "illegal_parking":     "Parkir Illegal",
+    "wrong_way":           "Lawan Arah",
 }
 
 VEHICLE_LABELS = {
-    "car":        "🚗 Mobil",
-    "motorcycle": "🏍️ Motor",
-    "bus":        "🚌 Bus",
-    "truck":      "🚛 Truk",
-    "bicycle":    "🚲 Sepeda",
+    "car":        "Mobil",
+    "motorcycle": "Motor",
+    "bus":        "Bus",
+    "truck":      "Truk",
+    "bicycle":    "Sepeda",
 }
 
 COLOR_MAP = {
@@ -143,7 +143,7 @@ def load_stats(days_back: int = 30) -> dict:
     return get_statistics(days_back=days_back)
 
 def empty_state(msg: str = "Belum ada data. Jalankan `generate_demo_data.py` terlebih dahulu."):
-    st.info(f"ℹ️ {msg}", icon="📭")
+    st.info(f" {msg}", icon=)
 
 # ============================================================
 # SIDEBAR
@@ -151,20 +151,20 @@ def empty_state(msg: str = "Belum ada data. Jalankan `generate_demo_data.py` ter
 
 def render_sidebar() -> tuple[str, int]:
     with st.sidebar:
-        st.markdown('<div class="sidebar-logo">🚦 DISHUB DKI Jakarta</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-logo">DISHUB DKI Jakarta</div>', unsafe_allow_html=True)
         st.markdown("**Traffic Enforcement System**")
         st.markdown("---")
 
         page = st.radio(
-            "📌 Navigasi",
+            "Navigasi",
             options=[
-                "📊 Dashboard",
-                "📈 Analytics",
-                "🎫 E-TLE Integration",
-                "📋 Reports",
-                "🗺️ Heatmap",
-                "📱 Real-time Monitor",
-                "⚙️ Settings",
+                "Dashboard",
+                "Analytics",
+                "E-TLE Integration",
+                "Reports",
+                "Heatmap",
+                "Real-time Monitor",
+                "Settings",
             ],
             label_visibility="collapsed",
         )
@@ -179,8 +179,8 @@ def render_sidebar() -> tuple[str, int]:
 
         st.markdown("---")
         st.caption(f"🕐 {datetime.now().strftime('%d %b %Y, %H:%M')}")
-        st.caption(f"📂 DB: `{os.path.basename(DB_PATH)}`")
-        if st.button("🔄 Refresh Data", use_container_width=True):
+        st.caption(f" DB: `{os.path.basename(DB_PATH)}`")
+        if st.button(" Refresh Data", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
@@ -201,17 +201,17 @@ def page_dashboard(df: pd.DataFrame, stats: dict):
     # --- Metric Cards ---
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
-        st.metric("🚨 Total Pelanggaran", f"{stats['total']:,}")
+        st.metric("Total Pelanggaran", f"{stats['total']:,}")
     with col2:
         busway = stats["per_type"].get("busway_violation", 0)
-        st.metric("🚌 Jalur Busway", f"{busway:,}")
+        st.metric("Jalur Bus", f"{busway:,}")
     with col3:
         parking = stats["per_type"].get("illegal_parking", 0)
-        st.metric("🅿️ Parkir Liar", f"{parking:,}")
+        st.metric("Parkir Liar", f"{parking:,}")
     with col4:
-        st.metric("🔤 Plat Unik", f"{stats['unique_plates']:,}")
+        st.metric("Plat Unik", f"{stats['unique_plates']:,}")
     with col5:
-        st.metric("⏱️ Rata-rata Durasi", f"{stats['avg_duration']:.0f}s")
+        st.metric("Rata-rata Durasi", f"{stats['avg_duration']:.0f}s")
 
     st.markdown("---")
 
@@ -277,14 +277,14 @@ def page_dashboard(df: pd.DataFrame, stats: dict):
 # ============================================================
 
 def page_analytics(df: pd.DataFrame, days_back: int):
-    st.title("📈 Analytics Mendalam")
+    st.title("Analytics Mendalam")
 
     if df.empty:
         empty_state()
         return
 
     tab1, tab2, tab3, tab4 = st.tabs(
-        ["⏰ Pola Waktu", "🚗 Kendaraan", "📍 Per Lokasi", "🔁 Recidivism"]
+        ["Pola Waktu", "Kendaraan", "Per Lokasi", "Recidivism"]
     )
 
     with tab1:
@@ -368,7 +368,7 @@ def page_analytics(df: pd.DataFrame, days_back: int):
         st.plotly_chart(fig_rank, use_container_width=True)
 
     with tab4:
-        st.subheader("🔁 Analisis Pelanggar Berulang")
+        st.subheader("Analisis Pelanggar Berulang")
         offenders = get_repeat_offenders(days_back=days_back, min_count=2)
         if offenders.empty:
             st.info("Belum ada pelanggar berulang dalam periode ini.")
@@ -419,7 +419,7 @@ def page_etle(df: pd.DataFrame):
     with col_f1:
         status_filter = st.selectbox("Filter Status", ["Semua", "pending", "issued", "paid"])
     with col_f2:
-        plate_search = st.text_input("🔍 Cari Plat Nomor", placeholder="contoh: B1234XX")
+        plate_search = st.text_input("Cari Plat Nomor", placeholder="contoh: B1234XX")
 
     filtered = df.copy()
     if status_filter != "Semua":
@@ -440,13 +440,13 @@ def page_etle(df: pd.DataFrame):
     col_a, col_b = st.columns([1, 2])
     with col_a:
         viol_id = st.number_input("ID Pelanggaran", min_value=1, step=1)
-        if st.button("🎫 Generate Tiket", type="primary", use_container_width=True):
+        if st.button("Generate Tiket", type="primary", use_container_width=True):
             ticket = generate_etl_ticket(int(viol_id))
             if ticket:
-                st.success(f"✅ Tiket diterbitkan: **{ticket}**")
+                st.success(f"Tiket diterbitkan: **{ticket}**")
                 st.cache_data.clear()
             else:
-                st.error("❌ Gagal menerbitkan tiket. Pastikan ID valid.")
+                st.error("Gagal menerbitkan tiket. Pastikan ID valid.")
 
     with col_b:
         pending_ids = df[df["etl_status"] == "pending"]["id"].tolist()
@@ -458,7 +458,7 @@ def page_etle(df: pd.DataFrame):
                 if generate_etl_ticket(vid):
                     issued += 1
                 progress.progress((i + 1) / min(len(pending_ids), 50))
-            st.success(f"✅ {issued} tiket berhasil diterbitkan!")
+            st.success(f"{issued} tiket berhasil diterbitkan!")
             st.cache_data.clear()
 
 # ============================================================
@@ -466,7 +466,7 @@ def page_etle(df: pd.DataFrame):
 # ============================================================
 
 def page_reports(df: pd.DataFrame, days_back: int):
-    st.title("📋 Generator Laporan")
+    st.title("Generator Laporan")
 
     st.markdown("""
     Generate laporan Excel multi-sheet resmi untuk:
@@ -485,7 +485,7 @@ def page_reports(df: pd.DataFrame, days_back: int):
                                                for k, v in CAMERA_LOCATIONS.items()])
     with col3:
         st.markdown("&nbsp;", unsafe_allow_html=True)
-        generate_btn = st.button("📊 Generate Laporan Excel", type="primary",
+        generate_btn = st.button("Generate Laporan Excel", type="primary",
                                  use_container_width=True)
 
     if generate_btn:
@@ -493,7 +493,7 @@ def page_reports(df: pd.DataFrame, days_back: int):
             import subprocess
             cam_arg = cam_filter.split(" — ")[0] if cam_filter != "Semua" else ""
             cmd = ["python", "report_generator.py", "--days", str(report_days)]
-            with st.spinner("⏳ Membuat laporan..."):
+            with st.spinner("Membuat laporan..."):
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             if result.returncode == 0:
                 # Cari file terbaru
@@ -504,29 +504,29 @@ def page_reports(df: pd.DataFrame, days_back: int):
                 if xlsx_files:
                     with open(xlsx_files[0], "rb") as f:
                         st.download_button(
-                            f"⬇️ Download {xlsx_files[0]}",
+                            f"Download {xlsx_files[0]}",
                             data=f.read(),
                             file_name=xlsx_files[0],
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         )
-                    st.success(f"✅ Laporan siap: `{xlsx_files[0]}`")
+                    st.success(f"Laporan siap: `{xlsx_files[0]}`")
                 else:
                     st.warning("Laporan dibuat tapi file tidak ditemukan. Cek folder proyek.")
             else:
-                st.error(f"❌ Error saat generate: {result.stderr}")
+                st.error(f"Error saat generate: {result.stderr}")
                 st.info("Pastikan `report_generator.py` sudah ada di folder proyek.")
         except FileNotFoundError:
-            st.error("❌ `report_generator.py` tidak ditemukan.")
+            st.error("`report_generator.py` tidak ditemukan.")
         except Exception as e:
-            st.error(f"❌ Error: {e}")
+            st.error(f"Error: {e}")
 
     st.markdown("---")
-    st.subheader("📥 Export Data Mentah (CSV)")
+    st.subheader("Export Data Mentah (CSV)")
 
     if not df.empty:
         csv = df.to_csv(index=False).encode("utf-8")
         fname = f"violations_export_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
-        st.download_button("⬇️ Download CSV", data=csv, file_name=fname, mime="text/csv")
+        st.download_button("Download CSV", data=csv, file_name=fname, mime="text/csv")
         st.caption(f"{len(df):,} baris data siap diexport")
     else:
         empty_state()
@@ -536,7 +536,7 @@ def page_reports(df: pd.DataFrame, days_back: int):
 # ============================================================
 
 def page_heatmap(df: pd.DataFrame):
-    st.title("🗺️ Heatmap Pelanggaran")
+    st.title("Heatmap Pelanggaran")
 
     # Buat peta Folium berpusat di Jakarta
     m = folium.Map(location=[-6.2088, 106.8456], zoom_start=12,
@@ -559,8 +559,8 @@ def page_heatmap(df: pd.DataFrame):
 
         popup_html = f"""
         <b>{cam_name}</b><br>
-        📍 {cam_id}<br>
-        🚨 Pelanggaran: <b>{count}</b><br>
+        {cam_id}<br>
+        Pelanggaran: <b>{count}</b><br>
         """
         if not df.empty:
             types = df[df["camera_id"] == cam_id]["violation_type"].value_counts()
@@ -587,12 +587,12 @@ def page_heatmap(df: pd.DataFrame):
         st_folium(m, width="100%", height=500)
 
     with col2:
-        st.subheader("📍 Legenda")
+        st.subheader("Legenda")
         st.markdown("🔴 **Merah** — > 50 pelanggaran")
         st.markdown("🟠 **Oranye** — > 20 pelanggaran")
         st.markdown("🟢 **Hijau** — ≤ 20 pelanggaran")
         st.markdown("---")
-        st.subheader("🏆 Hotspot")
+        st.subheader("Hotspot")
         if not df.empty:
             top_cams = df["camera_id"].value_counts().head(5).reset_index()
             top_cams.columns = ["cam_id", "count"]
@@ -607,7 +607,7 @@ def page_heatmap(df: pd.DataFrame):
 # ============================================================
 
 def page_realtime():
-    st.title("📱 Real-time Monitor")
+    st.title("Real-time Monitor")
 
     st.info("""
     **Live monitoring** membutuhkan `detector.py` sedang berjalan di terminal.
@@ -619,19 +619,19 @@ def page_realtime():
     Dashboard ini akan auto-refresh setiap 5 detik untuk menampilkan deteksi terbaru.
     """)
 
-    auto_refresh = st.checkbox("🔄 Auto-refresh (5 detik)", value=False)
+    auto_refresh = st.checkbox("Auto-refresh (5 detik)", value=False)
     if auto_refresh:
         st.caption("Auto-refresh aktif...")
         time.sleep(5)
         st.experimental_rerun()
 
     st.markdown("---")
-    st.subheader("🔴 Deteksi Terbaru (Live)")
+    st.subheader("Deteksi Terbaru (Live)")
 
     # Ambil 20 data paling baru tanpa cache
     live_df = get_violations_df(days_back=1)
     if live_df.empty:
-        st.warning("⚠️ Belum ada data hari ini. Pastikan detector.py berjalan.")
+        st.warning("Belum ada data hari ini. Pastikan detector.py berjalan.")
         return
 
     live_df["timestamp"] = pd.to_datetime(live_df["timestamp"])
@@ -642,30 +642,30 @@ def page_realtime():
     for _, row in live_df.iterrows():
         with st.container():
             c1, c2, c3, c4, c5 = st.columns([2, 2, 2, 2, 1])
-            c1.markdown(f"🕐 `{row['timestamp'].strftime('%H:%M:%S')}`")
-            c2.markdown(f"📷 `{row['camera_id']}`")
+            c1.markdown(f" `{row['timestamp'].strftime('%H:%M:%S')}`")
+            c2.markdown(f" `{row['camera_id']}`")
             c3.markdown(f"{row['vehicle_label']}")
-            c4.markdown(f"🔤 **{row['license_plate']}**")
+            c4.markdown(f" **{row['license_plate']}**")
             c5.markdown(f"{row['vtype_label']}")
         st.divider()
 
-    st.subheader("📊 Statistik Hari Ini")
+    st.subheader("Statistik Hari Ini")
     today_stats = {
         "Total": len(live_df),
         "Unik Plat": live_df["license_plate"].nunique(),
     }
     col1, col2 = st.columns(2)
-    col1.metric("🚨 Deteksi Hari Ini", today_stats["Total"])
-    col2.metric("🔤 Plat Unik", today_stats["Unik Plat"])
+    col1.metric(" Deteksi Hari Ini", today_stats["Total"])
+    col2.metric(" Plat Unik", today_stats["Unik Plat"])
 
 # ============================================================
 # PAGE 7 — SETTINGS
 # ============================================================
 
 def page_settings():
-    st.title("⚙️ Settings & Informasi Sistem")
+    st.title(" Settings & Informasi Sistem")
 
-    tab1, tab2, tab3 = st.tabs(["🔧 Konfigurasi", "📊 Database Info", "📦 System Info"])
+    tab1, tab2, tab3 = st.tabs(["Konfigurasi", "Database Info", "System Info"])
 
     with tab1:
         st.subheader("Konfigurasi Aktif")
@@ -698,14 +698,14 @@ def page_settings():
             st.markdown("---")
             col_a, col_b = st.columns(2)
             with col_a:
-                if st.button("🗑️ Hapus Data Lama (> 1 tahun)", use_container_width=True):
+                if st.button("Hapus Data Lama (> 1 tahun)", use_container_width=True):
                     DatabaseManager().purge_old_records(365)
-                    st.success("✅ Data lama dihapus.")
+                    st.success("Data lama dihapus.")
                     st.cache_data.clear()
             with col_b:
-                if st.button("🔄 Reset Semua Data", type="secondary", use_container_width=True):
-                    st.warning("⚠️ Yakin? Ini akan menghapus SEMUA data!")
-                    if st.button("✅ Konfirmasi Reset"):
+                if st.button("Reset Semua Data", type="secondary", use_container_width=True):
+                    st.warning("Yakin? Ini akan menghapus SEMUA data!")
+                    if st.button("Konfirmasi Reset"):
                         os.remove(DB_PATH)
                         DatabaseManager()
                         st.success("Database di-reset.")
@@ -718,7 +718,7 @@ def page_settings():
         tech_data = {
             "Komponen": ["Object Detection", "Tracking", "ANPR", "Database", "Dashboard", "Maps", "Charts", "Reports"],
             "Technology": ["YOLOv8 (Ultralytics)", "ByteTrack (Supervision)", "EasyOCR", "SQLite", "Streamlit", "Folium", "Plotly", "OpenPyXL"],
-            "Status": ["✅ Free"] * 8,
+            "Status": ["Free"] * 8,
         }
         st.dataframe(pd.DataFrame(tech_data), use_container_width=True, hide_index=True)
 
@@ -736,13 +736,13 @@ def main():
     df    = load_data(days_back)
     stats = load_stats(days_back)
 
-    if   page == "📊 Dashboard":        page_dashboard(df, stats)
-    elif page == "📈 Analytics":        page_analytics(df, days_back)
-    elif page == "🎫 E-TLE Integration": page_etle(df)
-    elif page == "📋 Reports":          page_reports(df, days_back)
-    elif page == "🗺️ Heatmap":          page_heatmap(df)
-    elif page == "📱 Real-time Monitor": page_realtime()
-    elif page == "⚙️ Settings":         page_settings()
+    if   page == "Dashboard":        page_dashboard(df, stats)
+    elif page == "Analytics":        page_analytics(df, days_back)
+    elif page == "E-TLE Integration": page_etle(df)
+    elif page == "Reports":          page_reports(df, days_back)
+    elif page == "Heatmap":          page_heatmap(df)
+    elif page == "Real-time Monitor": page_realtime()
+    elif page == "Settings":         page_settings()
 
 if __name__ == "__main__":
     main()
