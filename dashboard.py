@@ -212,20 +212,20 @@ def empty_state(msg: str = "Belum ada data. Jalankan `generate_demo_data.py` ter
 
 def render_navbar() -> tuple[str, int]:
     """Render horizontal navbar with navigation and controls"""
-       st.markdown("""
-        <div class="navbar-container" style="padding: 20px 30px; margin-bottom: 20px;">
-            <div class="navbar-header" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0; display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <p class="navbar-title" style="font-size: 2em; margin: 0;">DISHUB DKI Jakarta</p>
-                    <p class="navbar-subtitle" style="font-size: 1em; opacity: 0.9; margin: 5px 0 0 0;">Traffic Enforcement System — AI Open Innovation Challenge 2026</p>
-                </div>
-                <div style="text-align: right; color: white; opacity: 0.8; font-size: 0.9em;">
-                    <p style="margin: 0; font-weight: 600;">LIVE MONITORING</p>
-                    <p style="margin: 2px 0 0 0; font-size: 0.85em;">Sistem Deteksi Otomatis</p>
-                </div>
+   st.markdown("""
+    <div class="navbar-container" style="padding: 20px 30px; margin-bottom: 20px;">
+        <div class="navbar-header" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <p class="navbar-title" style="font-size: 2em; margin: 0;">DISHUB DKI Jakarta</p>
+                <p class="navbar-subtitle" style="font-size: 1em; opacity: 0.9; margin: 5px 0 0 0;">Traffic Enforcement System — AI Open Innovation Challenge 2026</p>
+            </div>
+            <div style="text-align: right; color: white; opacity: 0.8; font-size: 0.9em;">
+                <p style="margin: 0; font-weight: 600;">LIVE MONITORING</p>
+                <p style="margin: 2px 0 0 0; font-size: 0.85em;">Sistem Deteksi Otomatis</p>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+    </div>
+    """, unsafe_allow_html=True)
     
     # Navigation items
     nav_items = [
