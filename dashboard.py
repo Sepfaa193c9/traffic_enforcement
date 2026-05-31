@@ -740,16 +740,12 @@ def page_realtime():
     import subprocess, shutil
     from collections import Counter
     import time as _time
-    # Tambahkan di bagian atas dashboard.py (setelah import lainnya)
-from detector import (
-    TrafficEnforcementSystem,
-    _load_yolo_model,        # ← ini tidak ada di detector.py, harus pakai cara lain
-)
 
+    STREAM_URL = "https://www.youtube.com/live/AQd-p5hFtQo?si=IbHHVTbrYjplSOer"
+    VIDEO_ID   = "AQd-p5hFtQo"
 
     st.title("📱 Real-time Monitor")
 
-    # ── Controls ───────────────────────────────────────────
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         conf = st.slider("Confidence", 0.1, 0.9, 0.35, 0.05)
@@ -762,10 +758,8 @@ from detector import (
 
     st.markdown("---")
 
-    # ── Split Layout ───────────────────────────────────────
     left, right = st.columns([1, 1])
 
-    # Kiri — embed YouTube
     with left:
         st.subheader("📺 Live Feed")
         embed_html = f"""
@@ -789,14 +783,6 @@ from detector import (
         """
         st.components.v1.html(embed_html, height=360)
 
-# ── Section: Demo Detector ─────────────────────────────
-    from detector import process_single_frame
-
-# ...
-result = process_single_frame(frame_rgb, conf=conf)
-st.image(result["annotated"], channels="RGB", use_container_width=True)
-
-    # Kanan — hasil deteksi YOLO
     with right:
         st.subheader("🤖 Hasil Deteksi YOLO")
         frame_ph = st.empty()
@@ -808,7 +794,6 @@ st.image(result["annotated"], channels="RGB", use_container_width=True)
         else:
             refresh_count = st.session_state.get("rt_count", 0)
 
-            # Resolve YouTube → direct URL via yt-dlp
             if st.session_state.get("rt_resolved") is None:
                 if not shutil.which("yt-dlp"):
                     frame_ph.error("yt-dlp tidak tersedia.")
@@ -836,29 +821,23 @@ st.image(result["annotated"], channels="RGB", use_container_width=True)
 
                 if frame_rgb is None:
                     frame_ph.warning(f"Gagal ambil frame: {err}")
-                    st.session_state.rt_resolved = None  # reset → resolve ulang
+                    st.session_state.rt_resolved = None
                 else:
-                    # YOLO inference
                     try:
-                        model     = _load_yolo_model()
-                        results   = model(frame_rgb, conf=conf, verbose=False)[0]
-                        annotated = results.plot()
+                        from detector import process_single_frame
+                        result    = process_single_frame(frame_rgb, conf=conf)
+                        annotated = result["annotated"]
+                        n         = result["total"]
+                        vehicles  = {VEHICLE_LABELS.get(k, k): v
+                                     for k, v in result["vehicles"].items()}
+                        others    = result["others"]
                     except Exception as e:
-                        frame_ph.error(f"YOLO error: {e}")
+                        frame_ph.error(f"Detector error: {e}")
                         return
 
                     frame_ph.image(annotated, channels="RGB",
                                    use_container_width=True,
                                    caption=f"Deteksi: {datetime.now().strftime('%H:%M:%S')}")
-
-                    # Stats
-                    n   = len(results.boxes)
-                    cls = [model.names[int(c)] for c in results.boxes.cls]
-                    cnt = Counter(cls)
-                    vehicle_keys = {"car", "motorcycle", "bus", "truck", "bicycle"}
-                    vehicles = {VEHICLE_LABELS.get(k, k): v
-                                for k, v in cnt.items() if k in vehicle_keys}
-                    others   = sum(v for k, v in cnt.items() if k not in vehicle_keys)
 
                     with stat_ph.container():
                         c1, c2, c3 = st.columns(3)
@@ -874,6 +853,95 @@ st.image(result["annotated"], channels="RGB", use_container_width=True)
                     st.session_state.rt_count = refresh_count + 1
                     _time.sleep(interval)
                     st.rerun()
+
+    # ── Section: Demo Detector ─────────────────────────────
+    st.markdown("---")
+    st.subheader("🔍 Demo Detector — Upload Gambar / Video")
+    st.caption("Uji deteksi kendaraan & plat nomor menggunakan YOLO + EasyOCR")
+
+    upload = st.file_uploader("Upload gambar atau video pendek",
+                               type=["jpg", "jpeg", "png", "mp4", "avi", "mov"])
+
+    if upload is not None:
+        import numpy as np
+        from PIL import Image
+        import io
+
+        if upload.type.startswith("image"):
+            img       = Image.open(upload).convert("RGB")
+            frame_rgb = np.array(img)
+
+            col_ori, col_det = st.columns(2)
+            with col_ori:
+                st.markdown("**Original**")
+                st.image(img, use_container_width=True)
+            with col_det:
+                st.markdown("**Hasil Deteksi**")
+                with st.spinner("Menjalankan detector..."):
+                    try:
+                        from detector import process_single_frame
+                        result = process_single_frame(frame_rgb, conf=conf)
+                        st.image(result["annotated"], channels="RGB", use_container_width=True)
+                        vehicles = {VEHICLE_LABELS.get(k, k): v
+                                    for k, v in result["vehicles"].items()}
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("Terdeteksi", result["total"])
+                        c2.metric("Kendaraan", sum(vehicles.values()))
+                        c3.metric("Lainnya", result["others"])
+                        if vehicles:
+                            st.markdown("  ".join(f"**{k}** {v}" for k, v in vehicles.items()))
+                    except Exception as e:
+                        st.error(f"Detector error: {e}")
+
+            st.markdown("**Deteksi Plat Nomor (EasyOCR)**")
+            with st.spinner("Membaca plat nomor..."):
+                try:
+                    import easyocr
+                    reader      = easyocr.Reader(["en"], gpu=False)
+                    ocr_results = reader.readtext(frame_rgb)
+                    plates      = [text for (_, text, prob) in ocr_results if prob > 0.4]
+                    if plates:
+                        st.success("Plat terdeteksi: " + "  |  ".join(plates))
+                    else:
+                        st.info("Tidak ada plat terdeteksi.")
+                except Exception as e:
+                    st.error(f"EasyOCR error: {e}")
+
+        elif upload.type.startswith("video"):
+            import tempfile, cv2
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+                tmp.write(upload.read())
+                tmp_path = tmp.name
+
+            st.video(upload)
+            max_frames = st.slider("Jumlah frame diproses", 5, 50, 10, 5)
+
+            if st.button("Jalankan Deteksi Video", type="primary"):
+                from detector import process_single_frame
+                cap      = cv2.VideoCapture(tmp_path)
+                total    = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                step     = max(1, total // max_frames)
+                progress = st.progress(0)
+                cols     = st.columns(3)
+                col_idx  = 0
+                frame_idx = 0
+
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    if frame_idx % step == 0:
+                        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        result    = process_single_frame(frame_rgb, conf=conf)
+                        with cols[col_idx % 3]:
+                            st.image(result["annotated"], channels="RGB",
+                                     caption=f"Frame {frame_idx}",
+                                     use_container_width=True)
+                        col_idx += 1
+                    frame_idx += 1
+                    progress.progress(min(frame_idx / total, 1.0))
+
+                cap.release()
  
 # ============================================================
 # PAGE 7 — SETTINGS
