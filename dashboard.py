@@ -90,8 +90,6 @@ st.markdown("""
     /* NAVBAR HORIZONTAL */
     .navbar-container {
         background: linear-gradient(90deg, #1e3a5f 0%, #2d6a9f 100%);
-        width: 100%;
-        box-sizing: border-box;
         border-radius: 12px;
         padding: 15px 0;
         margin-bottom: 25px;
