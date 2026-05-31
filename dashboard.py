@@ -212,7 +212,7 @@ def empty_state(msg: str = "Belum ada data. Jalankan `generate_demo_data.py` ter
 
 def render_navbar() -> tuple[str, int]:
     """Render horizontal navbar with navigation and controls"""
-   st.markdown("""
+    st.markdown("""
     <div class="navbar-container" style="padding: 20px 30px; margin-bottom: 20px;">
         <div class="navbar-header" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0; display: flex; justify-content: space-between; align-items: center;">
             <div>
