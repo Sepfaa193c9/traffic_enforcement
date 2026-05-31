@@ -49,15 +49,6 @@ def _init_database():
 
 # Init database on startup
 _init_database()
-# DEBUG — hapus setelah fix
-_init_database()
-st.write("DB exists:", os.path.exists(DB_PATH))
-st.write("DB path:", DB_PATH)
-try:
-    df_test = get_violations_df(days_back=30)
-    st.write("Row count:", len(df_test))
-except Exception as e:
-    st.write("ERROR:", e)
 # ============================================================
 # PAGE CONFIG
 # ============================================================
