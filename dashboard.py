@@ -786,6 +786,127 @@ def page_realtime():
         """
         st.components.v1.html(embed_html, height=360)
 
+# ── Section: Demo Detector ─────────────────────────────
+    st.markdown("---")
+    st.subheader("🔍 Demo Detector — Upload Gambar / Video")
+    st.caption("Uji deteksi kendaraan & plat nomor menggunakan YOLO + EasyOCR")
+
+    upload = st.file_uploader("Upload gambar atau video pendek",
+                               type=["jpg", "jpeg", "png", "mp4", "avi", "mov"])
+
+    if upload is not None:
+        import numpy as np
+        from PIL import Image
+        import io
+
+        file_type = upload.type
+
+        # ── Gambar ─────────────────────────────────────────
+        if file_type.startswith("image"):
+            img = Image.open(upload).convert("RGB")
+            frame_rgb = np.array(img)
+
+            col_ori, col_det = st.columns(2)
+            with col_ori:
+                st.markdown("**Original**")
+                st.image(img, use_container_width=True)
+
+            with col_det:
+                st.markdown("**Hasil Deteksi**")
+                with st.spinner("Menjalankan YOLO..."):
+                    try:
+                        model    = _load_yolo_model()
+                        results  = model(frame_rgb, conf=0.35, verbose=False)[0]
+                        annotated = results.plot()
+                        st.image(annotated, channels="RGB", use_container_width=True)
+
+                        # Stats
+                        from collections import Counter
+                        cls = [model.names[int(c)] for c in results.boxes.cls]
+                        cnt = Counter(cls)
+                        vehicle_keys = {"car", "motorcycle", "bus", "truck", "bicycle"}
+                        vehicles = {VEHICLE_LABELS.get(k, k): v
+                                    for k, v in cnt.items() if k in vehicle_keys}
+                        others = sum(v for k, v in cnt.items() if k not in vehicle_keys)
+
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("Terdeteksi", len(results.boxes))
+                        c2.metric("Kendaraan", sum(vehicles.values()))
+                        c3.metric("Lainnya", others)
+
+                        if vehicles:
+                            st.markdown("  ".join(f"**{k}** {v}" for k, v in vehicles.items()))
+                    except Exception as e:
+                        st.error(f"YOLO error: {e}")
+
+            # EasyOCR plat nomor
+            st.markdown("**Deteksi Plat Nomor (EasyOCR)**")
+            with st.spinner("Membaca plat nomor..."):
+                try:
+                    import easyocr
+                    reader = easyocr.Reader(["en"], gpu=False)
+                    ocr_results = reader.readtext(frame_rgb)
+                    if ocr_results:
+                        plates = [text for (_, text, prob) in ocr_results if prob > 0.4]
+                        if plates:
+                            st.success("Plat terdeteksi: " + "  |  ".join(plates))
+                        else:
+                            st.info("Tidak ada teks dengan confidence cukup.")
+                    else:
+                        st.info("Tidak ada teks terdeteksi.")
+                except Exception as e:
+                    st.error(f"EasyOCR error: {e}")
+
+        # ── Video ──────────────────────────────────────────
+        elif file_type.startswith("video"):
+            import tempfile, cv2
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+                tmp.write(upload.read())
+                tmp_path = tmp.name
+
+            st.video(upload)
+
+            max_frames = st.slider("Jumlah frame diproses", 5, 50, 10, 5)
+
+            if st.button("Jalankan Deteksi Video", type="primary"):
+                cap = cv2.VideoCapture(tmp_path)
+                total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                step  = max(1, total // max_frames)
+
+                results_list = []
+                frame_idx = 0
+                progress = st.progress(0)
+
+                model = _load_yolo_model()
+
+                cols = st.columns(3)
+                col_idx = 0
+
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    if frame_idx % step == 0:
+                        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        results   = model(frame_rgb, conf=0.35, verbose=False)[0]
+                        annotated = results.plot()
+                        with cols[col_idx % 3]:
+                            st.image(annotated, channels="RGB",
+                                     caption=f"Frame {frame_idx}",
+                                     use_container_width=True)
+                        col_idx += 1
+                        results_list.append(len(results.boxes))
+                    frame_idx += 1
+                    progress.progress(min(frame_idx / total, 1.0))
+
+                cap.release()
+
+                if results_list:
+                    st.markdown("---")
+                    avg = sum(results_list) / len(results_list)
+                    st.metric("Rata-rata Objek Terdeteksi per Frame", f"{avg:.1f}")
+
     # Kanan — hasil deteksi YOLO
     with right:
         st.subheader("🤖 Hasil Deteksi YOLO")
