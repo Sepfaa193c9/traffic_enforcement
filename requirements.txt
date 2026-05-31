@@ -24,7 +24,6 @@ folium>=0.14.0
 streamlit-folium>=0.15.0
 plotly>=5.17.0
 streamlit-autorefresh>=1.0.1
-yt-dlp
 
 # Data & time
 pandas>=2.0.0
