@@ -56,7 +56,7 @@ _init_database()
 st.set_page_config(
     page_title="DISHUB DKI - Traffic Enforcement",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ============================================================
@@ -88,14 +88,76 @@ st.markdown("""
     .badge-bike     { background: #00c85322; color: #00c853; }
     .badge-wrong    { background: #9c27b022; color: #9c27b0; }
 
-    .sidebar-logo {
-        text-align: center;
-        padding: 10px 0 20px;
-        padding-left: 1px;
-        font-size: 1.4em;
-        font-weight: 700;
-        color: #2d6a9f;
+    /* NAVBAR HORIZONTAL */
+    .navbar-container {
+        background: linear-gradient(90deg, #1e3a5f 0%, #2d6a9f 100%);
+        border-radius: 12px;
+        padding: 15px 20px;
+        margin-bottom: 25px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.15);
     }
+
+    .navbar-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid rgba(255,255,255,0.2);
+    }
+
+    .navbar-title {
+        font-size: 1.5em;
+        font-weight: 700;
+        color: white;
+        margin: 0;
+    }
+
+    .navbar-subtitle {
+        font-size: 0.85em;
+        color: rgba(255,255,255,0.8);
+        margin: 0;
+    }
+
+    .navbar-nav {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .nav-button {
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.9em;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: 2px solid rgba(255,255,255,0.3);
+        color: white;
+        background: rgba(255,255,255,0.1);
+        text-decoration: none;
+    }
+
+    .nav-button:hover {
+        background: rgba(255,255,255,0.2);
+        border-color: rgba(255,255,255,0.6);
+    }
+
+    .nav-button.active {
+        background: rgba(255,255,255,0.3);
+        border-color: white;
+        box-shadow: 0 0 10px rgba(255,255,255,0.3);
+    }
+
+    .navbar-right {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+    }
+
     div[data-testid="stMetricValue"] { font-size: 2em !important; }
 </style>
 """, unsafe_allow_html=True)
@@ -146,45 +208,77 @@ def empty_state(msg: str = "Belum ada data. Jalankan `generate_demo_data.py` ter
     st.info(f"{msg}")
 
 # ============================================================
-# SIDEBAR
+# NAVBAR HORIZONTAL
 # ============================================================
 
-def render_sidebar() -> tuple[str, int]:
-    with st.sidebar:
-        st.markdown('<div class="sidebar-logo">DISHUB DKI Jakarta</div>', unsafe_allow_html=True)
-        st.markdown("**Traffic Enforcement System**")
-        st.markdown("---")
-
-        page = st.radio(
-            "Navigasi",
-            options=[
-                "Dashboard",
-                "Analytics",
-                "E-TLE Integration",
-                "Reports",
-                "Heatmap",
-                "Real-time Monitor",
-                "Settings",
-            ],
-            label_visibility="collapsed",
-        )
-
-        st.markdown("---")
+def render_navbar() -> tuple[str, int]:
+    """Render horizontal navbar with navigation and controls"""
+    
+    col_header, col_right = st.columns([1, 0.3])
+    
+    with col_header:
+        st.markdown("""
+        <div class="navbar-container">
+            <div class="navbar-header">
+                <div>
+                    <p class="navbar-title">🚗 DISHUB DKI Jakarta</p>
+                    <p class="navbar-subtitle">Traffic Enforcement System</p>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Navigation items
+    nav_items = [
+        "📊 Dashboard",
+        "📈 Analytics",
+        "🎫 E-TLE Integration",
+        "📋 Reports",
+        "🗺️ Heatmap",
+        "📱 Real-time Monitor",
+        "⚙️ Settings",
+    ]
+    
+    # Store page state in session
+    if "current_page" not in st.session_state:
+        st.session_state.current_page = nav_items[0]
+    
+    # Navigation buttons
+    st.markdown("<div class='navbar-nav'>", unsafe_allow_html=True)
+    nav_cols = st.columns(len(nav_items))
+    
+    for idx, (col, item) in enumerate(zip(nav_cols, nav_items)):
+        with col:
+            if st.button(item, use_container_width=True, 
+                        key=f"nav_{idx}"):
+                st.session_state.current_page = item
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Controls section (di bawah navbar)
+    st.markdown("---")
+    col_period, col_refresh = st.columns([1, 0.5])
+    
+    with col_period:
         days_back = st.select_slider(
             "Periode Data",
             options=[1, 3, 7, 14, 30, 60, 90],
             value=30,
             format_func=lambda x: f"{x} hari",
+            label_visibility="collapsed",
         )
-
-        st.markdown("---")
-        st.caption(f"{datetime.now().strftime('%d %b %Y, %H:%M')}")
-        st.caption(f"DB: `{os.path.basename(DB_PATH)}`")
-        if st.button("Refresh Data", use_container_width=True):
+    
+    with col_refresh:
+        if st.button("🔄 Refresh", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
-
-    return page, days_back
+    
+    st.markdown("---")
+    
+    # Extract page name (remove emoji)
+    page_name = st.session_state.current_page.split(" ", 1)[1] if " " in st.session_state.current_page else st.session_state.current_page
+    
+    return page_name, days_back
 
 # ============================================================
 # PAGE 1 — DASHBOARD
@@ -610,17 +704,15 @@ def page_realtime():
     st.title("📱 Real-time Monitor")
 
     st.info("""
-    **Live monitoring** membutuhkan `detector.py` sedang berjalan di terminal lokal.
+    **Live monitoring** membutuhkan `detector.py` sedang berjalan di terminal.
 
-```bash
+    ```bash
     python detector.py --no-display
-```
+    ```
 
     Aktifkan auto-refresh di bawah agar data terupdate otomatis.
     """)
 
-    # Auto-refresh pakai streamlit-autorefresh
-    # JANGAN pakai time.sleep() + st.experimental_rerun() — deprecated & error di cloud
     col_r1, col_r2 = st.columns([2, 1])
     with col_r1:
         auto_refresh = st.checkbox("🔄 Auto-refresh", value=False)
@@ -632,9 +724,12 @@ def page_realtime():
         )
 
     if auto_refresh:
-        from streamlit_autorefresh import st_autorefresh
-        count = st_autorefresh(interval=interval_sec * 1000, key="realtime_refresh")
-        st.caption(f"🔄 Auto-refresh aktif — {interval_sec}s | refresh ke-{count}")
+        try:
+            from streamlit_autorefresh import st_autorefresh
+            count = st_autorefresh(interval=interval_sec * 1000, key="realtime_refresh")
+            st.caption(f"🔄 Auto-refresh aktif — {interval_sec}s | refresh ke-{count}")
+        except ImportError:
+            st.warning("Install `streamlit-autorefresh` untuk auto-refresh: `pip install streamlit-autorefresh`")
 
     st.markdown("---")
     st.subheader("🔴 Deteksi Terbaru (Live)")
@@ -737,18 +832,18 @@ def page_settings():
 # ============================================================
 
 def main():
-    page, days_back = render_sidebar()
+    page, days_back = render_navbar()
 
     df    = load_data(days_back)
     stats = load_stats(days_back)
 
-    if   page == "Dashboard":        page_dashboard(df, stats)
-    elif page == "Analytics":        page_analytics(df, days_back)
+    if   page == "Dashboard":         page_dashboard(df, stats)
+    elif page == "Analytics":         page_analytics(df, days_back)
     elif page == "E-TLE Integration": page_etle(df)
-    elif page == "Reports":          page_reports(df, days_back)
-    elif page == "Heatmap":          page_heatmap(df)
+    elif page == "Reports":           page_reports(df, days_back)
+    elif page == "Heatmap":           page_heatmap(df)
     elif page == "Real-time Monitor": page_realtime()
-    elif page == "Settings":         page_settings()
+    elif page == "Settings":          page_settings()
 
 if __name__ == "__main__":
     main()
