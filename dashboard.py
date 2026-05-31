@@ -607,56 +607,62 @@ def page_heatmap(df: pd.DataFrame):
 # ============================================================
 
 def page_realtime():
-    st.title("Real-time Monitor")
+    st.title("📱 Real-time Monitor")
 
     st.info("""
-    **Live monitoring** membutuhkan `detector.py` sedang berjalan di terminal.
+    **Live monitoring** membutuhkan `detector.py` sedang berjalan di terminal lokal.
 
-    ```bash
+```bash
     python detector.py --no-display
-    ```
+```
 
-    Dashboard ini akan auto-refresh setiap 5 detik untuk menampilkan deteksi terbaru.
+    Aktifkan auto-refresh di bawah agar data terupdate otomatis.
     """)
 
-    auto_refresh = st.checkbox("Auto-refresh (5 detik)", value=False)
+    # Auto-refresh pakai streamlit-autorefresh
+    # JANGAN pakai time.sleep() + st.experimental_rerun() — deprecated & error di cloud
+    col_r1, col_r2 = st.columns([2, 1])
+    with col_r1:
+        auto_refresh = st.checkbox("🔄 Auto-refresh", value=False)
+    with col_r2:
+        interval_sec = st.selectbox(
+            "Interval", [5, 10, 30], index=0,
+            format_func=lambda x: f"{x} detik",
+            label_visibility="collapsed",
+        )
+
     if auto_refresh:
-        st.caption("Auto-refresh aktif...")
-        time.sleep(5)
-        st.experimental_rerun()
+        from streamlit_autorefresh import st_autorefresh
+        count = st_autorefresh(interval=interval_sec * 1000, key="realtime_refresh")
+        st.caption(f"🔄 Auto-refresh aktif — {interval_sec}s | refresh ke-{count}")
 
     st.markdown("---")
-    st.subheader("Deteksi Terbaru (Live)")
+    st.subheader("🔴 Deteksi Terbaru (Live)")
 
-    # Ambil 20 data paling baru tanpa cache
     live_df = get_violations_df(days_back=1)
     if live_df.empty:
-        st.warning("Belum ada data hari ini. Pastikan detector.py berjalan.")
+        st.warning("⚠️ Belum ada data hari ini. Pastikan detector.py berjalan.")
         return
 
-    live_df["timestamp"] = pd.to_datetime(live_df["timestamp"])
-    live_df = live_df.sort_values("timestamp", ascending=False).head(20)
+    live_df["timestamp"]     = pd.to_datetime(live_df["timestamp"])
+    live_df                  = live_df.sort_values("timestamp", ascending=False).head(20)
     live_df["vtype_label"]   = live_df["violation_type"].map(VIOLATION_LABELS).fillna(live_df["violation_type"])
     live_df["vehicle_label"] = live_df["vehicle_type"].map(VEHICLE_LABELS).fillna(live_df["vehicle_type"])
 
     for _, row in live_df.iterrows():
         with st.container():
             c1, c2, c3, c4, c5 = st.columns([2, 2, 2, 2, 1])
-            c1.markdown(f"`{row['timestamp'].strftime('%H:%M:%S')}`")
-            c2.markdown(f"`{row['camera_id']}`")
+            c1.markdown(f"🕐 `{row['timestamp'].strftime('%H:%M:%S')}`")
+            c2.markdown(f"📷 `{row['camera_id']}`")
             c3.markdown(f"{row['vehicle_label']}")
-            c4.markdown(f"**{row['license_plate']}**")
+            c4.markdown(f"🔤 **{row['license_plate']}**")
             c5.markdown(f"{row['vtype_label']}")
         st.divider()
 
-    st.subheader("Statistik Hari Ini")
-    today_stats = {
-        "Total": len(live_df),
-        "Unik Plat": live_df["license_plate"].nunique(),
-    }
+    st.subheader("📊 Statistik Hari Ini")
     col1, col2 = st.columns(2)
-    col1.metric("Deteksi Hari Ini", today_stats["Total"])
-    col2.metric("Plat Unik", today_stats["Unik Plat"])
+    col1.metric("🚨 Deteksi Hari Ini", len(live_df))
+    col2.metric("🔤 Plat Unik", live_df["license_plate"].nunique())
 
 # ============================================================
 # PAGE 7 — SETTINGS
