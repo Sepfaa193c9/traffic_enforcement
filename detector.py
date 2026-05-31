@@ -1032,9 +1032,97 @@ def process_single_frame(frame_rgb: np.ndarray, conf: float = 0.35) -> dict:
     }
 
 
-# ============================================================
-# CLI
-# ============================================================
+
+# STREAMLIT BRIDGE
+
+class StreamlitDetectorBridge:
+    """
+    Jalankan detector di background thread.
+    Streamlit polling latest_frame dan latest_stats via shared state.
+    """
+    def __init__(self):
+        self._thread     = None
+        self._stop_event = threading.Event()
+        self.latest_frame: np.ndarray | None = None
+        self.latest_stats: dict = {}
+        self.is_running  = False
+        self.error       = None
+        self._lock       = threading.Lock()
+
+    def start(self, source: str, conf: float = 0.35):
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self.error      = None
+        self.is_running = True
+        self._thread    = threading.Thread(
+            target=self._run, args=(source, conf), daemon=True
+        )
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+        self.is_running = False
+
+    def _run(self, source: str, conf: float):
+        import cv2
+        from ultralytics import YOLO
+        from collections import Counter
+
+        try:
+            # Resolve YouTube jika perlu
+            if is_youtube_url(source):
+                source = get_youtube_stream_url(source)
+
+            model = YOLO("yolov8n.pt")
+
+            # Warmup
+            dummy = np.zeros((640, 640, 3), dtype=np.uint8)
+            model(dummy, conf=conf, verbose=False)
+
+            cap = cv2.VideoCapture(source)
+            if not cap.isOpened():
+                self.error = "Tidak bisa buka stream."
+                self.is_running = False
+                return
+
+            frame_skip = 3
+            frame_idx  = 0
+
+            while not self._stop_event.is_set():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                frame_idx += 1
+                if frame_idx % frame_skip != 0:
+                    continue
+
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                results   = model(frame_rgb, conf=conf, verbose=False)[0]
+                annotated = results.plot()
+
+                cls_list     = [model.names[int(c)] for c in results.boxes.cls]
+                cnt          = Counter(cls_list)
+                vehicle_keys = {"car", "motorcycle", "bus", "truck", "bicycle"}
+
+                with self._lock:
+                    self.latest_frame = annotated
+                    self.latest_stats = {
+                        "total":    len(results.boxes),
+                        "vehicles": {k: v for k, v in cnt.items() if k in vehicle_keys},
+                        "others":   sum(v for k, v in cnt.items() if k not in vehicle_keys),
+                        "ts":       datetime.now().strftime("%H:%M:%S"),
+                    }
+
+            cap.release()
+
+        except Exception as e:
+            self.error = str(e)
+        finally:
+            self.is_running = False
+
+#CLI
 
 if __name__ == "__main__":
     logging.basicConfig(
