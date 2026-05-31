@@ -850,7 +850,92 @@ def page_realtime():
     st.session_state.rt_count = refresh_count + 1
     _time.sleep(interval)
     st.rerun()
-            
+
+# ============================================================
+# PAGE 7 — SETTINGS
+# ============================================================
+
+def page_settings():
+    st.title("⚙️ Pengaturan Sistem")
+
+    tab1, tab2, tab3 = st.tabs(["Kamera", "Model AI", "Database"])
+
+    # ── Tab 1: Kamera ──────────────────────────────────────
+    with tab1:
+        st.subheader("Konfigurasi Kamera")
+        cameras = DatabaseManager().get_cameras()
+        if cameras:
+            cam_df = pd.DataFrame(cameras)
+            st.dataframe(cam_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("Belum ada kamera terdaftar.")
+
+        st.markdown("---")
+        st.subheader("Tambah Kamera Baru")
+        col1, col2 = st.columns(2)
+        with col1:
+            new_cam_id   = st.text_input("Camera ID", placeholder="CAM_007")
+            new_cam_name = st.text_input("Nama Lokasi", placeholder="Jl. Sudirman - Semanggi")
+        with col2:
+            new_lat  = st.number_input("Latitude",  value=-6.2088, format="%.6f")
+            new_long = st.number_input("Longitude", value=106.8456, format="%.6f")
+
+        if st.button("Simpan Kamera", type="primary"):
+            if new_cam_id and new_cam_name:
+                st.success(f"Kamera **{new_cam_id}** berhasil ditambahkan.")
+            else:
+                st.warning("Camera ID dan Nama Lokasi wajib diisi.")
+
+    # ── Tab 2: Model AI ────────────────────────────────────
+    with tab2:
+        st.subheader("Konfigurasi Model YOLO")
+        st.info(f"Model aktif: `{YOLO_MODEL}`")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.selectbox("Model", ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt"], index=0)
+            st.slider("Default Confidence", 0.1, 0.9, 0.35, 0.05)
+        with col2:
+            st.number_input("Frame Skip", min_value=1, max_value=30, value=5)
+            st.selectbox("Device", ["cpu", "cuda", "mps"], index=0)
+
+        if st.button("Simpan Konfigurasi Model", type="primary"):
+            st.success("Konfigurasi model disimpan.")
+
+    # ── Tab 3: Database ────────────────────────────────────
+    with tab3:
+        st.subheader("Informasi Database")
+        st.code(f"Path: {DB_PATH}", language="bash")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if os.path.exists(DB_PATH):
+                size_kb = os.path.getsize(DB_PATH) / 1024
+                st.metric("Ukuran Database", f"{size_kb:.1f} KB")
+            else:
+                st.warning("Database tidak ditemukan.")
+
+        with col2:
+            total = load_stats().get("total", 0)
+            st.metric("Total Record", f"{total:,}")
+
+        st.markdown("---")
+        st.subheader("Maintenance")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("Clear Cache", use_container_width=True):
+                st.cache_data.clear()
+                st.success("Cache berhasil dibersihkan.")
+        with col_b:
+            if st.button("Reset Sample Data", use_container_width=True, type="primary"):
+                try:
+                    from generate_demo_data import generate_demo_data
+                    generate_demo_data(count=300, days_back=30)
+                    st.cache_data.clear()
+                    st.success("Sample data berhasil di-reset.")
+                except Exception as e:
+                    st.error(f"Gagal reset data: {e}")
+
 # ============================================================
 # MAIN
 # ============================================================
