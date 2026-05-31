@@ -1003,6 +1003,35 @@ class TrafficEnforcementSystem:
             print(f"\nSesi selesai — Frame: {self.frame_count}  |  FPS rata-rata: {self.fps:.1f}")
 
 
+# Tambahkan di bagian bawah detector.py, sebelum CLI section
+
+def process_single_frame(frame_rgb: np.ndarray, conf: float = 0.35) -> dict:
+    """
+    Helper untuk dipanggil dari dashboard Streamlit.
+    Input  : frame RGB (numpy array)
+    Output : dict berisi annotated frame + stats deteksi
+    """
+    from ultralytics import YOLO
+    import supervision as sv
+    from collections import Counter
+
+    model   = YOLO("yolov8n.pt")
+    results = model(frame_rgb, conf=conf, verbose=False)[0]
+    annotated = results.plot()
+
+    cls_list = [model.names[int(c)] for c in results.boxes.cls]
+    cnt      = Counter(cls_list)
+    vehicle_keys = {"car", "motorcycle", "bus", "truck", "bicycle"}
+
+    return {
+        "annotated":  annotated,                  # numpy RGB
+        "total":      len(results.boxes),
+        "vehicles":   {k: v for k, v in cnt.items() if k in vehicle_keys},
+        "others":     sum(v for k, v in cnt.items() if k not in vehicle_keys),
+        "class_counts": dict(cnt),
+    }
+
+
 # ============================================================
 # CLI
 # ============================================================
