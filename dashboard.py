@@ -833,8 +833,7 @@ def page_realtime():
     vehicles = {VEHICLE_LABELS.get(k, k): v for k, v in cnt.items() if k in vehicle_keys}
     others   = sum(v for k, v in cnt.items() if k not in vehicle_keys)
 
-    with stat_ph.container():
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3 = stat_ph.columns(3)
     c1.metric("Terdeteksi", n)
     c2.metric("Kendaraan", sum(vehicles.values()))
     c3.metric("Lainnya", others)
