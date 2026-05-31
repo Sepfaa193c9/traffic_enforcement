@@ -192,7 +192,7 @@ def render_sidebar() -> tuple[str, int]:
 
 def page_dashboard(df: pd.DataFrame, stats: dict):
     st.title("Dashboard Utama")
-    st.caption(f"Sistem deteksi pelanggaran lalu lintas otomatis — {datetime.now().strftime('%d %B %Y')}")
+    st.caption(f"Sistem deteksi pelanggaran lalu lintas otomatis - {datetime.now().strftime('%d %B %Y')}")
 
     if df.empty:
         empty_state()
@@ -217,7 +217,7 @@ def page_dashboard(df: pd.DataFrame, stats: dict):
 
     col_left, col_right = st.columns([1, 1])
 
-    # Pie chart — violation types
+    # Pie chart - violation types
     with col_left:
         st.subheader("Distribusi Jenis Pelanggaran")
         vtype_counts = df["vtype_label"].value_counts().reset_index()
@@ -231,7 +231,7 @@ def page_dashboard(df: pd.DataFrame, stats: dict):
         fig_pie.update_layout(showlegend=False, margin=dict(t=10, b=10))
         st.plotly_chart(fig_pie, use_container_width=True)
 
-    # Bar chart — per camera
+    # Bar chart - per camera
     with col_right:
         st.subheader("Pelanggaran per Kamera")
         cam_data = df["camera_id"].value_counts().reset_index()
@@ -354,7 +354,7 @@ def page_analytics(df: pd.DataFrame, days_back: int):
                           labels={"date": "Tanggal", "count": "Jumlah"})
         st.plotly_chart(fig_cam, use_container_width=True)
 
-        st.subheader("Ranking Kamera — Total Pelanggaran")
+        st.subheader("Ranking Kamera Total Pelanggaran")
         cam_rank = df["camera_id"].value_counts().reset_index()
         cam_rank.columns = ["camera_id", "Total"]
         cam_rank["Lokasi"] = cam_rank["camera_id"].map(
@@ -400,7 +400,7 @@ def page_analytics(df: pd.DataFrame, days_back: int):
 
 def page_etle(df: pd.DataFrame):
     st.title("E-TLE Integration")
-    st.caption("Electronic Traffic Law Enforcement — penerbitan tiket digital")
+    st.caption("Electronic Traffic Law Enforcement - penerbitan tiket digital")
 
     if df.empty:
         empty_state()
@@ -481,7 +481,7 @@ def page_reports(df: pd.DataFrame, days_back: int):
                                    index=2, format_func=lambda x: f"{x} hari")
     with col2:
         cam_filter = st.selectbox("Filter Kamera",
-                                  ["Semua"] + [f"{k} — {v['name']}"
+                                  ["Semua"] + [f"{k} - {v['name']}"
                                                for k, v in CAMERA_LOCATIONS.items()])
     with col3:
         st.markdown("&nbsp;", unsafe_allow_html=True)
@@ -491,7 +491,7 @@ def page_reports(df: pd.DataFrame, days_back: int):
     if generate_btn:
         try:
             import subprocess
-            cam_arg = cam_filter.split(" — ")[0] if cam_filter != "Semua" else ""
+            cam_arg = cam_filter.split(" - ")[0] if cam_filter != "Semua" else ""
             cmd = ["python", "report_generator.py", "--days", str(report_days)]
             with st.spinner("Membuat laporan..."):
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
@@ -588,9 +588,9 @@ def page_heatmap(df: pd.DataFrame):
 
     with col2:
         st.subheader("Legenda")
-        st.markdown("**Merah** — > 50 pelanggaran")
-        st.markdown("**Oranye** — > 20 pelanggaran")
-        st.markdown("**Hijau** — <= 20 pelanggaran")
+        st.markdown("**Merah** - > 50 pelanggaran")
+        st.markdown("**Oranye** - > 20 pelanggaran")
+        st.markdown("**Hijau** - <= 20 pelanggaran")
         st.markdown("---")
         st.subheader("Hotspot")
         if not df.empty:
@@ -600,7 +600,7 @@ def page_heatmap(df: pd.DataFrame):
                 {k: v["name"] for k, v in CAMERA_LOCATIONS.items()}
             ).fillna(top_cams["cam_id"])
             for _, row in top_cams.iterrows():
-                st.markdown(f"**{row['nama']}** — {row['count']} pelanggaran")
+                st.markdown(f"**{row['nama']}** - {row['count']} pelanggaran")
 
 # ============================================================
 # PAGE 6 — REAL-TIME MONITOR
@@ -724,7 +724,7 @@ def page_settings():
 
         st.markdown("---")
         st.markdown("**Version:** 1.1.0 | **Last Updated:** May 2026")
-        st.markdown("**Built for:** AI Open Innovation Challenge 2026 — DISHUB DKI Jakarta")
+        st.markdown("**Built for:** AI Open Innovation Challenge 2026 - DISHUB DKI Jakarta")
 
 # ============================================================
 # MAIN
