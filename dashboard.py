@@ -275,7 +275,7 @@ def render_navbar() -> tuple[str, int]:
     st.markdown("---")
     
     # Extract page name (remove emoji)
-    page_name = st.session_state.current_page.split(" ", 1)[1] if " " in st.session_state.current_page else st.session_state.current_page
+    page_name = st.session_state.current_page
     
     return page_name, days_back
 
@@ -833,7 +833,8 @@ def page_realtime():
     vehicles = {VEHICLE_LABELS.get(k, k): v for k, v in cnt.items() if k in vehicle_keys}
     others   = sum(v for k, v in cnt.items() if k not in vehicle_keys)
 
-    c1, c2, c3 = stat_ph.columns(3)
+    with stat_ph.container():
+    c1, c2, c3 = st.columns(3)
     c1.metric("Terdeteksi", n)
     c2.metric("Kendaraan", sum(vehicles.values()))
     c3.metric("Lainnya", others)
