@@ -89,7 +89,7 @@ st.markdown("""
     .badge-wrong    { background: #9c27b022; color: #9c27b0; }
 
     .sidebar-logo {
-        text-align: left;
+        text-align: center;
         padding: 10px 0 20px;
         padding-left: 1px;
         font-size: 1.4em;
