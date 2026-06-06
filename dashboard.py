@@ -807,7 +807,7 @@ def page_realtime():
                     bridge.stop()
                     del st.session_state["detector_bridge"]
                     st.rerun()
-                break
+                  break
                   
               elif bridge.latest_frame is not None:
                   with bridge._lock:
