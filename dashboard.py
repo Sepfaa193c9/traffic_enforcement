@@ -792,49 +792,33 @@ def page_realtime():
 
     
 
-        if run:
-            # Start jika belum jalan
-            if not bridge.is_running:
-                status_ph.info("Menghubungkan ke stream...")
-                bridge.start(STREAM_URL, conf=conf)
+        # 1. Buat placeholder kosong di Streamlit agar komponen lain tidak ikut digambar ulang
+frame_placeholder = st.empty()
+stats_placeholder = st.empty()
 
-            # Tampilkan error jika ada
-            if bridge.error:
-                frame_ph.error(f"Error: {bridge.error}")
-                if st.button("🔄 Coba Lagi", key="retry_btn"):
-                    bridge.stop()
-                    del st.session_state["detector_bridge"]
-                    st.rerun()
-            elif bridge.latest_frame is not None:
-                with bridge._lock:
-                    frame  = bridge.latest_frame.copy()
-                    stats  = bridge.latest_stats.copy()
-
-                frame_ph.image(frame, channels="RGB",
-                               use_container_width=True,
-                               caption=f"Deteksi: {stats.get('ts', '')}")
-
-                vehicles = {VEHICLE_LABELS.get(k, k): v
-                            for k, v in stats.get("vehicles", {}).items()}
-
-                with stat_ph.container():
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Terdeteksi", stats.get("total", 0))
-                    c2.metric("Kendaraan",  sum(vehicles.values()))
-                    c3.metric("Lainnya",    stats.get("others", 0))
-
-                if vehicles:
-                    info_ph.markdown("  ".join(
-                        f"**{k}** {v}" for k, v in vehicles.items()
-                    ))
-                status_ph.empty()
-            else:
-                frame_ph.info("Menunggu frame pertama... (5-15 detik)")
-
-            # Auto-refresh UI
-            _time.sleep(refresh)
-            st.rerun()
-
+if run:
+    if not bridge.is_running:
+        bridge.start(STREAM_URL, conf=conf)
+    
+    # 2. Lakukan looping lokal tanpa memicu st.rerun()
+    while run and bridge.is_running:
+        if bridge.latest_frame is not None:
+            # Ambil frame dan statistik terbaru dari thread detector.py
+            with bridge._lock:
+                frame = bridge.latest_frame.copy()
+                stats = bridge.latest_stats.copy()
+            
+            # 3. Perbarui gambar secara langsung di placeholder yang sama
+            frame_placeholder.image(frame, channels="RGB", use_container_width=True)
+            
+            # 4. Perbarui metrik tanpa merusak UI yang lain
+            with stats_placeholder.container():
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Total Terdeteksi", stats.get("total", 0))
+                # Tambahkan statistik kendaraan sesuai data dari detector.py
+        
+        # Jeda sangat kecil (30ms ~ setara 30 FPS layar monitor)
+        time.sleep(0.03)
         else:
             # Stop bridge jika toggle dimatikan
             if bridge.is_running:
