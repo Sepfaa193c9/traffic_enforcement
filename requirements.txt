@@ -1,5 +1,5 @@
 # ============================================
-# TRAFFIC ENFORCEMENT SYSTEM - LOMBA READY
+# TRAFFIC ENFORCEMENT SYSTEM
 # ============================================
 
 # Core CV
