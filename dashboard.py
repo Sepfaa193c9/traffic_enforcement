@@ -814,11 +814,11 @@ def page_realtime():
                      frame  = bridge.latest_frame.copy()
                      stats  = bridge.latest_stats.copy()
 
-                frame_ph.image(frame, channels="RGB",
+                  frame_ph.image(frame, channels="RGB",
                                use_container_width=True,
                                caption=f"Deteksi: {stats.get('ts', '')}")
 
-                vehicles = {VEHICLE_LABELS.get(k, k): v
+                  vehicles = {VEHICLE_LABELS.get(k, k): v
                             for k, v in stats.get("vehicles", {}).items()}
 
                 with stat_ph.container():
