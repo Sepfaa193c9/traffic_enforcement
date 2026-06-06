@@ -153,37 +153,6 @@ st.markdown("""
     }
 
     div[data-testid="stMetricValue"] { font-size: 2em !important; }
-    
-    /* Detection Container Styles */
-    .detection-container {
-        background: #f5f5f5;
-        border-radius: 10px;
-        padding: 15px;
-        border: 2px solid #ddd;
-        min-height: 400px;
-        display: flex;
-        flex-direction: column;
-    }
-    
-    .detection-status {
-        padding: 10px 15px;
-        border-radius: 6px;
-        margin-bottom: 10px;
-        font-weight: 600;
-        text-align: center;
-    }
-    
-    .status-active {
-        background: #d4edda;
-        color: #155724;
-        border: 1px solid #c3e6cb;
-    }
-    
-    .status-inactive {
-        background: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -722,7 +691,7 @@ def page_heatmap(df: pd.DataFrame):
                 st.markdown(f"**{row['nama']}** - {row['count']} pelanggaran")
 
 # ============================================================
-# PAGE 6 — REAL-TIME MONITOR (IMPROVED)
+# PAGE 6 — REAL-TIME MONITOR
 # ============================================================
 @st.cache_resource
 def _load_yolo_model():
@@ -765,27 +734,20 @@ def _grab_frame_mjpeg(stream_url: str):
 def page_realtime():
     import time as _time
 
-    st.title("📱 Real-time Monitor")
+    STREAM_URL = "https://www.youtube.com/live/AQd-p5hFtQo?si=IbHHVTbrYjplSOer"
+    VIDEO_ID   = "AQd-p5hFtQo"
 
-    # ============================================================
-    # VIDEO URL OPTIONS - Multiple fallbacks
-    # ============================================================
-    VIDEO_SOURCES = {
-        "Jakarta Traffic (1)": "dQw4w9WgXcQ",
-        "Jakarta Traffic (2)": "WzFi_EeUGcQ", 
-        "Highway Monitoring": "9bZkp7q19f0",
-        "City Street": "5IyKrqHBQ5I",
-    }
+    st.title("📱 Real-time Monitor")
 
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
-        selected_source = st.selectbox("Pilih Video Feed", list(VIDEO_SOURCES.keys()))
-        video_id = VIDEO_SOURCES[selected_source]
+        conf = st.slider("Confidence", 0.1, 0.9, 0.35, 0.05)
     with col2:
-        conf = st.slider("Confidence", 0.1, 0.9, 0.35, 0.05, key="conf_slider")
+        refresh = st.selectbox("Refresh UI tiap", [1, 2, 3, 5], index=1,
+                               format_func=lambda x: f"{x}s")
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
-        run = st.toggle("▶ Mulai Deteksi", key="detect_toggle")
+        run = st.toggle("▶ Mulai Deteksi")
 
     st.markdown("---")
 
@@ -794,76 +756,95 @@ def page_realtime():
     # ── Kiri: embed YouTube ────────────────────────────────
     with left:
         st.subheader("📺 Live Feed")
-        try:
-            embed_html = f"""
-            <div style="position: relative; width: 100%; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
-                <iframe 
-                    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; border-radius: 10px;"
-                    src="https://www.youtube.com/embed/oIB4ADYlFXg?si=7luVmEbZ-M2hIo3Y"
-                    frameborder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowfullscreen>
-                </iframe>
-            </div>
-            <p style="color:#666; font-size:0.85em; margin-top:12px; text-align: center;">
-                <strong>Feed:</strong> {selected_source}
+        embed_html = f"""
+        <div>
+            <iframe width="100%" height="315"
+                src="https://www.youtube.com/embed/{VIDEO_ID}?autoplay=1&mute=0&rel=0"
+                frameborder="0"
+                allow="autoplay; encrypted-media; fullscreen"
+                allowfullscreen
+                style="border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+            </iframe>
+            <p style="color:gray; font-size:0.82em; margin-top:8px;">
+                Jika video tidak muncul, coba refresh. &nbsp;
+                <a href="{STREAM_URL}" target="_blank" style="color:#2d6a9f;">
+                    Buka di YouTube →
+                </a>
             </p>
-            """
-            st.components.v1.html(embed_html, height=380)
-        except Exception as e:
-            st.error(f"Gagal load video: {str(e)}")
-            st.info("Coba refresh atau pilih sumber video lain")
+        </div>
+        """
+        st.components.v1.html(embed_html, height=360)
 
-    # ── Kanan: hasil deteksi YOLO (Optimized Container) ──────────────────────────
+    # ── Kanan: hasil deteksi YOLO ──────────────────────────
     with right:
-        st.markdown('<div class="detection-container">', unsafe_allow_html=True)
         st.subheader("🤖 Hasil Deteksi YOLO")
-        
-        # Status indicator
-        status_text = "🟢 AKTIF" if run else "🔴 NONAKTIF"
-        status_class = "status-active" if run else "status-inactive"
-        st.markdown(f'<div class="detection-status {status_class}">{status_text}</div>', 
-                   unsafe_allow_html=True)
-        
-       # Di dalam page_realtime()
-    frame_placeholder = st.empty()
-    stats_placeholder = st.empty()
+        frame_ph = st.empty()
+        stat_ph  = st.empty()
+        info_ph  = st.empty()
+        status_ph = st.empty()
 
-    if run:
-        if not bridge.is_running:
-            bridge.start(STREAM_URL, conf=conf)
-            
-        # LOOPING LOKAL: Tidak ada lagi st.rerun() atau _time.sleep() yang memblokir
-        while run and bridge.is_running:
-            if bridge.latest_frame is not None:
-                with bridge._lock:
-                    frame = bridge.latest_frame.copy()
-                    stats = bridge.latest_stats.copy()
-                
-                # Render instan
-                frame_placeholder.image(frame, channels="RGB", use_container_width=True)
-                
-                with stats_placeholder.container():
-                    st.metric("Total Terdeteksi", stats.get("total", 0))
-                    # (Tambahkan metrik lainnya di sini)
-                    
-            time.sleep(0.03) # Jeda ~30 FPS
-                
-                if bridge and bridge.is_running:
+        # Init bridge di session_state agar persist antar rerun
+        if "detector_bridge" not in st.session_state:
+            from detector import StreamlitDetectorBridge
+            st.session_state.detector_bridge = StreamlitDetectorBridge()
+
+        bridge = st.session_state.detector_bridge
+
+    
+
+        if run:
+            # Start jika belum jalan
+            if not bridge.is_running:
+                status_ph.info("Menghubungkan ke stream...")
+                bridge.start(STREAM_URL, conf=conf)
+
+            # Tampilkan error jika ada
+            if bridge.error:
+                frame_ph.error(f"Error: {bridge.error}")
+                if st.button("🔄 Coba Lagi", key="retry_btn"):
                     bridge.stop()
-                    
-            except Exception as e:
-                st.error(f"⚠️ Detector error: {str(e)}")
-                st.info("**Fallback mode**: Gunakan Demo Detector di bawah untuk test")
+                    del st.session_state["detector_bridge"]
+                    st.rerun()
+            elif bridge.latest_frame is not None:
+                with bridge._lock:
+                    frame  = bridge.latest_frame.copy()
+                    stats  = bridge.latest_stats.copy()
+
+                frame_ph.image(frame, channels="RGB",
+                               use_container_width=True,
+                               caption=f"Deteksi: {stats.get('ts', '')}")
+
+                vehicles = {VEHICLE_LABELS.get(k, k): v
+                            for k, v in stats.get("vehicles", {}).items()}
+
+                with stat_ph.container():
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Terdeteksi", stats.get("total", 0))
+                    c2.metric("Kendaraan",  sum(vehicles.values()))
+                    c3.metric("Lainnya",    stats.get("others", 0))
+
+                if vehicles:
+                    info_ph.markdown("  ".join(
+                        f"**{k}** {v}" for k, v in vehicles.items()
+                    ))
+                status_ph.empty()
+            else:
+                frame_ph.info("Menunggu frame pertama... (5-15 detik)")
+
+            # Auto-refresh UI
+            _time.sleep(refresh)
+            st.rerun()
+
         else:
-            frame_placeholder.info("Aktifkan toggle '▶ Mulai Deteksi' untuk memulai")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+            # Stop bridge jika toggle dimatikan
+            if bridge.is_running:
+                bridge.stop()
+            frame_ph.info("Aktifkan toggle ▶ Mulai Deteksi untuk memulai.")
 
     # ── Section: Demo Detector ─────────────────────────────
     st.markdown("---")
     st.subheader("🔍 Demo Detector — Upload Gambar / Video")
-    st.caption("Uji deteksi kendaraan & plat nomor menggunakan YOLO + EasyOCR (Opsional)")
+    st.caption("Uji deteksi kendaraan & plat nomor menggunakan YOLO + EasyOCR")
 
     upload = st.file_uploader("Upload gambar atau video pendek",
                                type=["jpg", "jpeg", "png", "mp4", "avi", "mov"])
@@ -906,7 +887,7 @@ def page_realtime():
             with st.spinner("Membaca plat nomor..."):
                 try:
                     import easyocr
-                    reader      = easyocr.Reader(["id"], gpu=True)
+                    reader      = easyocr.Reader(["en"], gpu=False)
                     ocr_results = reader.readtext(frame_rgb)
                     plates      = [text for (_, text, prob) in ocr_results if prob > 0.4]
                     if plates:
@@ -951,7 +932,7 @@ def page_realtime():
                     progress.progress(min(frame_idx / total, 1.0))
 
                 cap.release()
-
+ 
 # ============================================================
 # PAGE 7 — SETTINGS
 # ============================================================
@@ -1057,3 +1038,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
