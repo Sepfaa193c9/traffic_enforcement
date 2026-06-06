@@ -790,35 +790,33 @@ def page_realtime():
 
         bridge = st.session_state.detector_bridge
 
-    
+    # 1. Buat placeholder kosong di Streamlit agar komponen lain tidak ikut digambar ulang
+    frame_placeholder = st.empty()
+    stats_placeholder = st.empty()
 
-        # 1. Buat placeholder kosong di Streamlit agar komponen lain tidak ikut digambar ulang
-frame_placeholder = st.empty()
-stats_placeholder = st.empty()
-
-if run:
-    if not bridge.is_running:
-        bridge.start(STREAM_URL, conf=conf)
-    
-    # 2. Lakukan looping lokal tanpa memicu st.rerun()
-    while run and bridge.is_running:
-        if bridge.latest_frame is not None:
-            # Ambil frame dan statistik terbaru dari thread detector.py
-            with bridge._lock:
-                frame = bridge.latest_frame.copy()
-                stats = bridge.latest_stats.copy()
-            
-            # 3. Perbarui gambar secara langsung di placeholder yang sama
-            frame_placeholder.image(frame, channels="RGB", use_container_width=True)
-            
-            # 4. Perbarui metrik tanpa merusak UI yang lain
-            with stats_placeholder.container():
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Total Terdeteksi", stats.get("total", 0))
-                # Tambahkan statistik kendaraan sesuai data dari detector.py
+    if run:
+        if not bridge.is_running:
+            bridge.start(STREAM_URL, conf=conf)
         
-        # Jeda sangat kecil (30ms ~ setara 30 FPS layar monitor)
-        time.sleep(0.03)
+        # 2. Lakukan looping lokal tanpa memicu st.rerun()
+        while run and bridge.is_running:
+            if bridge.latest_frame is not None:
+                # Ambil frame dan statistik terbaru dari thread detector.py
+                with bridge._lock:
+                    frame = bridge.latest_frame.copy()
+                    stats = bridge.latest_stats.copy()
+                
+                # 3. Perbarui gambar secara langsung di placeholder yang sama
+                frame_placeholder.image(frame, channels="RGB", use_container_width=True)
+                
+                # 4. Perbarui metrik tanpa merusak UI yang lain
+                with stats_placeholder.container():
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Total Terdeteksi", stats.get("total", 0))
+                    # Tambahkan statistik kendaraan sesuai data dari detector.py
+            
+            # Jeda sangat kecil (30ms ~ setara 30 FPS layar monitor)
+            time.sleep(0.03)
         else:
             # Stop bridge jika toggle dimatikan
             if bridge.is_running:
@@ -916,7 +914,7 @@ if run:
                     progress.progress(min(frame_idx / total, 1.0))
 
                 cap.release()
- 
+
 # ============================================================
 # PAGE 7 — SETTINGS
 # ============================================================
