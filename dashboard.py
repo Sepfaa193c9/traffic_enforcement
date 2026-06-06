@@ -153,21 +153,6 @@ st.markdown("""
     }
 
     div[data-testid="stMetricValue"] { font-size: 2em !important; }
-    
-    /* Table styling untuk Real-time Monitor */
-    .detection-table {
-        font-size: 0.85em;
-    }
-    .detection-table th {
-        background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%);
-        color: white;
-        padding: 10px;
-        font-weight: 600;
-    }
-    .detection-table td {
-        padding: 8px;
-        border-bottom: 1px solid #e0e0e0;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -800,15 +785,12 @@ def page_realtime():
 
         # Init bridge di session_state agar persist antar rerun
         if "detector_bridge" not in st.session_state:
-            # Lazy import untuk menghindari circular import saat app start
-            try:
-                from detector import StreamlitDetectorBridge
-                st.session_state.detector_bridge = StreamlitDetectorBridge()
-            except Exception as e:
-                st.error(f"Gagal load detector bridge: {e}")
-                return
+            from detector import StreamlitDetectorBridge
+            st.session_state.detector_bridge = StreamlitDetectorBridge()
 
         bridge = st.session_state.detector_bridge
+
+    
 
         if run:
             # Start jika belum jalan
@@ -859,56 +841,6 @@ def page_realtime():
                 bridge.stop()
             frame_ph.info("Aktifkan toggle ▶ Mulai Deteksi untuk memulai.")
 
-    # ── Section: Tabel Deteksi Kendaraan ─────────────────────────────
-    st.markdown("---")
-    st.subheader("📊 Tabel Deteksi Kendaraan")
-    st.caption("Statistik real-time deteksi kendaraan dari stream")
-
-    # Sample data untuk demo (replace dengan data real dari detector)
-    vehicle_data = {
-        "Jenis Kendaraan": ["Mobil", "Motor", "Bus", "Truk", "Sepeda"],
-        "Jumlah": [12, 8, 3, 2, 1],
-        "% Total": ["54.5%", "36.4%", "13.6%", "9.1%", "4.5%"]
-    }
-    vehicle_df = pd.DataFrame(vehicle_data)
-    st.dataframe(vehicle_df, use_container_width=True, hide_index=True)
-
-    # ── Section: Tabel Plat Nomor ──────────────────────────
-    st.markdown("---")
-    st.subheader("🔍 Tabel Plat Nomor Terdeteksi")
-    st.caption("Plat nomor terdeteksi dan frekuensi kemunculannya")
-
-    # Sample data untuk demo (replace dengan data real dari detector)
-    plate_data = {
-        "Plat Nomor": ["B 1234 ABC", "D 5678 XYZ", "B 9012 DEF", "A 3456 GHI", "B 7890 JKL"],
-        "Waktu Terakhir": ["14:32:15", "14:31:48", "14:30:22", "14:29:45", "14:28:30"],
-        "Frekuensi": [3, 2, 1, 1, 1],
-        "Status": ["⚠️ High", "🟡 Medium", "🟢 Normal", "🟢 Normal", "🟢 Normal"]
-    }
-    plate_df = pd.DataFrame(plate_data)
-    st.dataframe(plate_df, use_container_width=True, hide_index=True)
-
-    # ── Section: Detail Log Deteksi ────────────────────────────
-    st.markdown("---")
-    st.subheader("📋 Log Deteksi Real-time")
-    st.caption("20 deteksi terakhir dari stream")
-
-    # Sample detection log
-    detection_log = {
-        "Waktu": ["14:32:15", "14:32:10", "14:32:05", "14:31:58", "14:31:52", 
-                  "14:31:48", "14:31:42", "14:31:35", "14:31:28", "14:31:22"],
-        "Plat Nomor": ["B 1234 ABC", "D 5678 XYZ", "B 1234 ABC", "B 9012 DEF", "B 1234 ABC",
-                       "D 5678 XYZ", "A 3456 GHI", "B 7890 JKL", "B 1234 ABC", "D 5678 XYZ"],
-        "Jenis Kendaraan": ["Mobil", "Motor", "Mobil", "Mobil", "Mobil",
-                            "Motor", "Mobil", "Motor", "Mobil", "Motor"],
-        "Confidence": ["0.94", "0.87", "0.92", "0.85", "0.89",
-                       "0.88", "0.91", "0.84", "0.93", "0.86"],
-        "Aksi": ["Detail", "Detail", "Detail", "Detail", "Detail",
-                 "Detail", "Detail", "Detail", "Detail", "Detail"]
-    }
-    detection_df = pd.DataFrame(detection_log)
-    st.dataframe(detection_df, use_container_width=True, hide_index=True)
-
     # ── Section: Demo Detector ─────────────────────────────
     st.markdown("---")
     st.subheader("🔍 Demo Detector — Upload Gambar / Video")
@@ -955,7 +887,7 @@ def page_realtime():
             with st.spinner("Membaca plat nomor..."):
                 try:
                     import easyocr
-                    reader      = easyocr.Reader(["id"], gpu=True)
+                    reader      = easyocr.Reader(["en"], gpu=False)
                     ocr_results = reader.readtext(frame_rgb)
                     plates      = [text for (_, text, prob) in ocr_results if prob > 0.4]
                     if plates:
@@ -1000,7 +932,7 @@ def page_realtime():
                     progress.progress(min(frame_idx / total, 1.0))
 
                 cap.release()
-
+ 
 # ============================================================
 # PAGE 7 — SETTINGS
 # ============================================================
