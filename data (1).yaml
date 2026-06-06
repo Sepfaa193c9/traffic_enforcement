@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['License_Plate']
+
+roboflow:
+  workspace: ajamisms-workspace
+  project: license-plate-recognition-rxg4e-mzwtq
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/ajamisms-workspace/license-plate-recognition-rxg4e-mzwtq/dataset/1
