@@ -153,6 +153,21 @@ st.markdown("""
     }
 
     div[data-testid="stMetricValue"] { font-size: 2em !important; }
+    
+    /* Table styling untuk Real-time Monitor */
+    .detection-table {
+        font-size: 0.85em;
+    }
+    .detection-table th {
+        background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%);
+        color: white;
+        padding: 10px;
+        font-weight: 600;
+    }
+    .detection-table td {
+        padding: 8px;
+        border-bottom: 1px solid #e0e0e0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -838,6 +853,97 @@ def page_realtime():
             if bridge.is_running:
                 bridge.stop()
             frame_ph.info("Aktifkan toggle ▶ Mulai Deteksi untuk memulai.")
+
+    # ── Section: Tabel Deteksi Kendaraan & Plat ─────────────────────────────
+    st.markdown("---")
+    st.subheader("📊 Statistik Deteksi Kendaraan & Plat Nomor")
+    st.caption("Tabel real-time deteksi kendaraan dan plat nomor dari stream")
+
+    # Initialize detection history di session_state
+    if "detection_history" not in st.session_state:
+        st.session_state.detection_history = []
+
+    col_table1, col_table2 = st.columns(2)
+
+    # ── Kolom Kiri: Tabel Kendaraan ──────────────────────────
+    with col_table1:
+        st.subheader("🚗 Kendaraan Terdeteksi")
+        
+        # Sample data untuk demo (replace dengan data real dari detector)
+        vehicle_data = {
+            "Jenis Kendaraan": ["Mobil", "Motor", "Bus", "Truk", "Sepeda"],
+            "Jumlah": [12, 8, 3, 2, 1],
+            "% Total": ["54.5%", "36.4%", "13.6%", "9.1%", "4.5%"]
+        }
+        vehicle_df = pd.DataFrame(vehicle_data)
+        st.dataframe(vehicle_df, use_container_width=True, hide_index=True)
+
+        # Visualisasi pie chart kendaraan
+        fig_vehicle = px.pie(
+            vehicle_df, 
+            values="Jumlah", 
+            names="Jenis Kendaraan",
+            color_discrete_sequence=px.colors.qualitative.Set2,
+            hole=0.3
+        )
+        fig_vehicle.update_layout(margin=dict(t=10, b=10), height=300)
+        st.plotly_chart(fig_vehicle, use_container_width=True)
+
+    # ── Kolom Kanan: Tabel Plat Nomor ──────────────────────────
+    with col_table2:
+        st.subheader("🔍 Plat Nomor Terdeteksi")
+        
+        # Sample data untuk demo (replace dengan data real dari detector)
+        plate_data = {
+            "Plat Nomor": ["B 1234 ABC", "D 5678 XYZ", "B 9012 DEF", "A 3456 GHI", "B 7890 JKL"],
+            "Waktu Terakhir": ["14:32:15", "14:31:48", "14:30:22", "14:29:45", "14:28:30"],
+            "Frekuensi": [3, 2, 1, 1, 1],
+            "Status": ["⚠️ High", "🟡 Medium", "🟢 Normal", "🟢 Normal", "🟢 Normal"]
+        }
+        plate_df = pd.DataFrame(plate_data)
+        st.dataframe(plate_df, use_container_width=True, hide_index=True)
+
+        # Bar chart plat terdeteksi
+        plate_chart_data = plate_df.head(5).copy()
+        fig_plate = px.bar(
+            plate_chart_data,
+            x="Plat Nomor",
+            y="Frekuensi",
+            color="Frekuensi",
+            color_continuous_scale="Reds",
+            text="Frekuensi",
+            title="Frekuensi Deteksi Per Plat"
+        )
+        fig_plate.update_traces(textposition="outside")
+        fig_plate.update_layout(
+            coloraxis_showscale=False,
+            margin=dict(t=30, b=10),
+            height=300,
+            xaxis_title="",
+            yaxis_title="Frekuensi"
+        )
+        st.plotly_chart(fig_plate, use_container_width=True)
+
+    # ── Section: Detail Log Deteksi ────────────────────────────
+    st.markdown("---")
+    st.subheader("📋 Log Deteksi Real-time")
+    st.caption("20 deteksi terakhir dari stream")
+
+    # Sample detection log
+    detection_log = {
+        "Waktu": ["14:32:15", "14:32:10", "14:32:05", "14:31:58", "14:31:52", 
+                  "14:31:48", "14:31:42", "14:31:35", "14:31:28", "14:31:22"],
+        "Plat Nomor": ["B 1234 ABC", "D 5678 XYZ", "B 1234 ABC", "B 9012 DEF", "B 1234 ABC",
+                       "D 5678 XYZ", "A 3456 GHI", "B 7890 JKL", "B 1234 ABC", "D 5678 XYZ"],
+        "Jenis Kendaraan": ["Mobil", "Motor", "Mobil", "Mobil", "Mobil",
+                            "Motor", "Mobil", "Motor", "Mobil", "Motor"],
+        "Confidence": ["0.94", "0.87", "0.92", "0.85", "0.89",
+                       "0.88", "0.91", "0.84", "0.93", "0.86"],
+        "Aksi": ["Cek", "Cek", "Cek", "Cek", "Cek",
+                 "Cek", "Cek", "Cek", "Cek", "Cek"]
+    }
+    detection_df = pd.DataFrame(detection_log)
+    st.dataframe(detection_df, use_container_width=True, hide_index=True)
 
     # ── Section: Demo Detector ─────────────────────────────
     st.markdown("---")
