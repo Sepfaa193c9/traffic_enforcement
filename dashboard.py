@@ -801,8 +801,7 @@ def page_realtime():
             # Start jika belum jalan
             if not bridge.is_running:
                 status_ph.info("Menghubungkan ke stream...")
-
-                import yt-dlp
+                
                 with yt-dlp.YoutubeDL({"quiet": True, "live_from_start": False}) as ydl:
                     info = ydl.extract_info(STREAM_URL, download= False)
                     live_url = info["url"]
