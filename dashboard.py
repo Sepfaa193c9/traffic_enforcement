@@ -790,7 +790,7 @@ def page_realtime():
 
         bridge = st.session_state.detector_bridge
 
-    # 1. Buat placeholder kosong di Streamlit agar komponen lain tidak ikut digambar ulang
+
     frame_placeholder = st.empty()
     stats_placeholder = st.empty()
 
