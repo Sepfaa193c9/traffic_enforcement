@@ -825,54 +825,29 @@ def page_realtime():
         st.markdown(f'<div class="detection-status {status_class}">{status_text}</div>', 
                    unsafe_allow_html=True)
         
-        # Placeholder untuk frame
-        frame_container = st.container(border=True)
-        with frame_container:
-            frame_placeholder = st.empty()
-            stats_placeholder = st.empty()
-        
-        if run:
-            try:
-                # Try load detector bridge
-                if "detector_bridge" not in st.session_state:
-                    try:
-                        from detector import StreamlitDetectorBridge
-                        st.session_state.detector_bridge = StreamlitDetectorBridge()
-                    except ImportError:
-                        st.session_state.detector_bridge = None
+       # Di dalam page_realtime()
+    frame_placeholder = st.empty()
+    stats_placeholder = st.empty()
+
+    if run:
+        if not bridge.is_running:
+            bridge.start(STREAM_URL, conf=conf)
+            
+        # LOOPING LOKAL: Tidak ada lagi st.rerun() atau _time.sleep() yang memblokir
+        while run and bridge.is_running:
+            if bridge.latest_frame is not None:
+                with bridge._lock:
+                    frame = bridge.latest_frame.copy()
+                    stats = bridge.latest_stats.copy()
                 
-                bridge = st.session_state.detector_bridge
+                # Render instan
+                frame_placeholder.image(frame, channels="RGB", use_container_width=True)
                 
-                if bridge and not bridge.is_running:
-                    bridge.start("https://youtu.be/" + video_id, conf=conf)
-                
-                # Live update loop - optimized untuk tidak lag
-                update_count = 0
-                while run and bridge and bridge.is_running:
-                    if bridge.latest_frame is not None:
-                        try:
-                            with bridge._lock:
-                                frame = bridge.latest_frame.copy()
-                                stats = bridge.latest_stats.copy()
-                            
-                            # Update frame setiap frame
-                            frame_placeholder.image(frame, channels="RGB", use_container_width=True)
-                            
-                            # Update stats setiap 5 frame (reduce lag)
-                            if update_count % 5 == 0:
-                                with stats_placeholder.container():
-                                    c1, c2, c3 = st.columns(3)
-                                    c1.metric("📊 Total", stats.get("total", 0), delta=None)
-                                    c2.metric("🚗 Vehicles", stats.get("vehicles", 0), delta=None)
-                                    c3.metric("⏱️ FPS", f"{stats.get('fps', 0):.1f}", delta=None)
-                            
-                            update_count += 1
-                        except Exception as e:
-                            st.warning(f"Error update frame: {str(e)[:50]}")
-                            break
+                with stats_placeholder.container():
+                    st.metric("Total Terdeteksi", stats.get("total", 0))
+                    # (Tambahkan metrik lainnya di sini)
                     
-                    # Very small delay untuk smooth updates
-                    time.sleep(0.01)
+            time.sleep(0.03) # Jeda ~30 FPS
                 
                 if bridge and bridge.is_running:
                     bridge.stop()
