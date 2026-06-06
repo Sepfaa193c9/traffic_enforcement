@@ -742,11 +742,13 @@ def page_realtime():
     st.header("🎥 Real-time Video Monitor (Live Edge)")
     st.markdown("Monitor siaran langsung kamera lalu lintas DISHUB dengan penanganan latensi rendah.")
 
-    # 1. KONFIGURASI PARAMETER DI SIDEBAR (Dipastikan statis & tidak terganggu rerun)
+    # 1. KONFIGURASI PARAMETER DI SIDEBAR (Statis & Terjamin Aman)
     with st.sidebar:
         st.subheader("⚙️ Real-time Config")
         conf = st.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05, key="rt_conf")
         refresh = st.slider("UI Refresh Rate (s)", 0.1, 2.0, 0.5, 0.1, key="rt_refresh")
+        
+        # Tombol Toggle ON/OFF dipastikan terisolasi dengan aman di sidebar
         run = st.toggle("▶ Mulai Deteksi", value=False, key="rt_run")
 
     # Fallback variabel jika config.py tidak terbaca
@@ -762,7 +764,7 @@ def page_realtime():
     # 2. MEMBUAT LAYOUT UTAMA (2 KOLOM)
     left, right = st.columns([1, 1])
 
-    # ── SISI KIRI: Embed Player Live Youtube (Statis, tidak ikut kedip/reload) ──
+    # ── SISI KIRI: Embed Player Live Youtube ──────────────────────────────────
     with left:
         st.subheader("📺 Live Feed Player")
         embed_html = f"""
@@ -781,12 +783,12 @@ def page_realtime():
         """
         st.components.v1.html(embed_html, height=350)
 
-    # ── SISI KANAN: Hasil Pemrosesan Frame AI (Menggunakan Fragment Terisolasi) ──
+    # ── SISI KANAN: Hasil Pemrosesan Frame AI Bumper ──────────────────────────
     with right:
         st.subheader("🤖 Hasil Deteksi YOLO")
 
-        # Mengisolasi loop pembaruan gambar menggunakan dekorator st.fragment
-        @st.fragment
+        # Menggunakan 'run_every' untuk auto-refresh fragment tanpa merusak sidebar utama
+        @st.fragment(run_every=refresh if run else None)
         def render_ai_stream(is_running):
             frame_ph = st.empty()
             stat_ph = st.empty()
@@ -814,11 +816,11 @@ def page_realtime():
                         frame = bridge.latest_frame.copy()
                         stats = bridge.latest_stats.copy()
 
-                    # Render Image ke UI
+                    # Render Image hasil deteksi ke UI
                     frame_ph.image(frame, channels="RGB", use_container_width=True,
                                    caption=f"AI Monitor Live Edge | Sinkronisasi: {stats.get('ts', '')}")
 
-                    # Tampilkan Statistik Objek
+                    # Tampilkan Statistik Objek Kontainer
                     vehicles = {VEHICLE_LABELS.get(k, k): v for k, v in stats.get("vehicles", {}).items()}
                     with stat_ph.container():
                         c1, c2, c3 = st.columns(3)
@@ -830,17 +832,13 @@ def page_realtime():
                         info_ph.markdown("📊 **Breakdown:** " + " | ".join(f"**{k}:** {v}" for k, v in vehicles.items()))
                 else:
                     frame_ph.info("Menghubungkan ke Live Edge. Menunggu frame pertama...")
-
-                # Rerun otomatis HANYA di dalam fungsi fragment ini (Sidebar & Player Kiri aman tidak hilang)
-                import time as _time
-                _time.sleep(refresh)
-                st.rerun()
             else:
+                # Jika toggle dimatikan (OFF), hentikan thread backend detector
                 if bridge.is_running:
                     bridge.stop()
                 frame_ph.info("Sistem AI dalam posisi Standby. Aktifkan toggle **Mulai Deteksi** di panel samping.")
 
-        # Panggil fungsi fragment gambar
+        # Eksekusi Fragment
         render_ai_stream(run)
 
     # ── BAGIAN BAWAH: Log Pelanggaran Terdeteksi Terkini (Database) ──
