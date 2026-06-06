@@ -799,7 +799,7 @@ def page_realtime():
             <div style="position: relative; width: 100%; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
                 <iframe 
                     style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; border-radius: 10px;"
-                    src="https://www.youtube.com/embed/{video_id}?autoplay=0&mute=1&rel=0&modestbranding=1"
+                    src="https://www.youtube.com/embed/oIB4ADYlFXg?si=7luVmEbZ-M2hIo3Y"
                     frameborder="0"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowfullscreen>
