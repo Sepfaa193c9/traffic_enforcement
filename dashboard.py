@@ -795,56 +795,58 @@ def page_realtime():
         if run:
             # Start jika belum jalan
             if not bridge.is_running:
-                status_ph.info("Menghubungkan ke stream...")
+                status_ph.info("Menghubungkan ke YouTube (butuh waktu 5-15 detik untuk memproses URL)...")
                 bridge.start(STREAM_URL, conf=conf)
-           
-            while run and bride.is_running:
-            
-            # Tampilkan error jika ada
-              if bridge.error:
-                 frame_ph.error(f"Error: {bridge.error}")
-                 if st.button("🔄 Coba Lagi", key="retry_btn"):
-                    bridge.stop()
-                    del st.session_state["detector_bridge"]
-                    st.rerun()
-                    break
-                  
-              elif bridge.latest_frame is not None:
-                  with bridge._lock:
-                     frame  = bridge.latest_frame.copy()
-                     stats  = bridge.latest_stats.copy()
 
-                  frame_ph.image(frame, channels="RGB",
-                               use_container_width=True,
-                               caption=f"Deteksi: {stats.get('ts', '')}")
+            # 🔥 FIX UTAMA: Gunakan while loop, BUKAN st.rerun()
+            while run and bridge.is_running:
+                
+                # Tampilkan error jika ada
+                if bridge.error:
+                    frame_ph.error(f"Error: {bridge.error}")
+                    if st.button("🔄 Coba Lagi", key="retry_btn"):
+                        bridge.stop()
+                        del st.session_state["detector_bridge"]
+                        st.rerun() # rerun di sini boleh karena ini kondisi reset error
+                    break # Keluar dari loop
 
-                  vehicles = {VEHICLE_LABELS.get(k, k): v
-                            for k, v in stats.get("vehicles", {}).items()}
+                elif bridge.latest_frame is not None:
+                    # Ambil frame dengan aman dari thread
+                    with bridge._lock:
+                        frame  = bridge.latest_frame.copy()
+                        stats  = bridge.latest_stats.copy()
 
-                with stat_ph.container():
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Terdeteksi", stats.get("total", 0))
-                    c2.metric("Kendaraan",  sum(vehicles.values()))
-                    c3.metric("Lainnya",    stats.get("others", 0))
+                    # Render gambar langsung ke placeholder yang sama
+                    frame_ph.image(frame, channels="RGB",
+                                   use_container_width=True,
+                                   caption=f"Deteksi: {stats.get('ts', '')}")
 
-                if vehicles:
-                    info_ph.markdown("  ".join(
-                        f"**{k}** {v}" for k, v in vehicles.items()
-                    ))
-                status_ph.empty()
-            else:
-                frame_ph.info("Menunggu frame pertama... (5-15 detik)")
+                    vehicles = {VEHICLE_LABELS.get(k, k): v
+                                for k, v in stats.get("vehicles", {}).items()}
 
-            # Auto-refresh UI
-            _time.sleep(0.03)
-            
+                    # Update metrik tanpa reload halaman
+                    with stat_ph.container():
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("Terdeteksi", stats.get("total", 0))
+                        c2.metric("Kendaraan",  sum(vehicles.values()))
+                        c3.metric("Lainnya",    stats.get("others", 0))
+
+                    if vehicles:
+                        info_ph.markdown("  ".join(
+                            f"**{k}** {v}" for k, v in vehicles.items()
+                        ))
+                    status_ph.empty()
+                else:
+                    frame_ph.info("Memproses frame pertama dari YouTube... harap tunggu.")
+
+                # Jeda sepersekian detik saja (50ms) agar Streamlit menangkap frame seperti video halus
+                _time.sleep(0.05)
 
         else:
             # Stop bridge jika toggle dimatikan
             if bridge.is_running:
                 bridge.stop()
             frame_ph.info("Aktifkan toggle ▶ Mulai Deteksi untuk memulai.")
-
     # ── Section: Demo Detector ─────────────────────────────
     st.markdown("---")
     st.subheader("🔍 Demo Detector — Upload Gambar / Video")
