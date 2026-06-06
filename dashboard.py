@@ -831,11 +831,18 @@ def page_realtime():
 
         render_ai_stream()
 
-    # ── BAGIAN BAWAH: Log Pelanggaran Terdeteksi Terkini (Database) ──
+    # ── BAGIAN BAWAH: Log Pelanggaran Terdeteksi Terkini (Database Resmi) ──
     st.markdown("---")
     st.markdown("#### 🚨 Log Pelanggaran Lalu Lintas Terkini (Database)")
     
-    df = load_data(days_back=1)
+    # PERBAIKAN: Menggunakan fungsi impor database resmi Anda dari database.py
+    try:
+        from database import get_violations_df
+        df = get_violations_df(days_back=1)
+    except Exception:
+        import pandas as pd
+        df = pd.DataFrame() # Fallback kosong jika DB belum terhubung
+
     if not df.empty:
         target_cols = ['timestamp', 'plate', 'vtype_label', 'confidence']
         available_cols = [col for col in target_cols if col in df.columns]
@@ -886,34 +893,20 @@ def page_realtime():
                     except Exception as e:
                         st.error(f"Detector error: {e}")
 
-            # ── PERBAIKAN: OCR Hanya Membaca Hasil Deteksi Bounding Box Kendaraan/Plat ──
             st.markdown("**Deteksi Plat Nomor (EasyOCR - Crop Mode)**")
             with st.spinner("Membaca plat nomor pada area kendaraan..."):
                 try:
-                    import easyocr
-                    reader = easyocr.Reader(["id"], gpu=False)
+                    # Menggunakan modul ANPR milik Anda sendiri dari file anpr.py
+                    from anpr import ANPRReader
+                    anpr_reader = ANPRReader()
+                    extracted_plate = anpr_reader.read_plate(frame_rgb)
                     
-                    # Cek apakah modul anpr.py milik Anda bisa dipakai secara modular
-                    try:
-                        from anpr import ANPRReader
-                        anpr_reader = ANPRReader()
-                        # Gunakan langsung fungsi ekstraksi dari anpr Anda agar format plat Indonesia-nya presisi
-                        extracted_plate = anpr_reader.read_plate(frame_rgb)
-                        if extracted_plate and extracted_plate != "UNKNOWN":
-                            st.success(f"Plat terdeteksi (ANPR Engine): **{extracted_plate}**")
-                        else:
-                            st.info("Tidak ada nomor plat valid terdeteksi pada area kendaraan.")
-                    except Exception:
-                        # Fallback jika model custom belum terikat sempurna: Baca teks kasar
-                        ocr_results = reader.readtext(frame_rgb)
-                        # Filter hanya string yang memiliki angka (ciri khas plat nomor Indonesia) agar tumbuhan tidak masuk
-                        plates = [text.upper() for (_, text, prob) in ocr_results if prob > 0.4 and any(c.isdigit() for c in text)]
-                        if plates:
-                            st.success("Plat terdeteksi: " + "  |  ".join(plates))
-                        else:
-                            st.info("Tidak ada plat nomor valid (mengandung angka) terdeteksi.")
+                    if extracted_plate and extracted_plate != "UNKNOWN":
+                        st.success(f"Plat terdeteksi (ANPR Engine): **{extracted_plate}**")
+                    else:
+                        st.info("Tidak ada nomor plat valid (Format Indonesia) terdeteksi pada area kendaraan.")
                 except Exception as e:
-                    st.error(f"EasyOCR error: {e}")
+                    st.error(f"ANPR Engine error: {e}")
  
 # ============================================================
 # PAGE 7 — SETTINGS
