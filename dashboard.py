@@ -737,50 +737,141 @@ def _grab_frame_mjpeg(stream_url: str):
 
 
 def page_realtime():
-    st.header("🎥 Real-time Video Monitor (Live Embed)")
-    st.markdown("Monitor siaran langsung kamera lalu lintas langsung dari sumber streaming resmi.")
+    st.header("🎥 Real-time Video Monitor (Live Edge)")
+    st.markdown("Monitor siaran langsung kamera lalu lintas DISHUB dengan penanganan latensi rendah.")
 
-    # 1. Pilihan URL Kamera Live (Bisa RTSP, YouTube Live, HLS .m3u8, atau MP4)
-    # Contoh default menggunakan contoh live stream umum, silakan ganti sesuai URL juri/DISHUB
-    live_url = st.text_input(
-        "Masukkan URL Live Stream (YouTube / HLS / MP4):", 
-        value="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-    )
+    # 1. Konfigurasi Parameter Deteksi di Sidebar atau bagian atas
+    with st.sidebar:
+        st.subheader("⚙️ Real-time Config")
+        conf = st.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05, key="rt_conf")
+        refresh = st.slider("UI Refresh Rate (s)", 0.1, 2.0, 0.5, 0.1, key="rt_refresh")
+        run = st.toggle("▶ Mulai Deteksi", value=False, key="rt_run")
 
-    st.markdown("---")
-
-    # 2. Embed Video Player Utama
-    # Menggunakan st.video agar player langsung memutar bagian paling baru secara real-time
+    # Ambil konfigurasi URL dan ID Video global (Pastikan variabel ini terdefinisi di config.py Anda)
+    # Jika tidak ada di config, Anda bisa melakukan fallback manual seperti di bawah ini:
     try:
-        if live_url:
-            st.subheader("📺 Live Feed Monitor")
-            st.video(live_url, autoplay=True, muted=True)
-            st.caption("💡 Pemutar menggunakan sistem sinkronisasi langsung (live edge) dari penyedia layanan.")
-    except Exception as e:
-        st.error(f"Gagal memuat embed video live: {e}")
+        from config import STREAM_URL, VIDEO_ID, VEHICLE_LABELS
+    except ImportError:
+        STREAM_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        VIDEO_ID = "dQw4w9WgXcQ"
+        VEHICLE_LABELS = {0: "Person", 2: "Car", 3: "Motorcycle", 5: "Bus", 7: "Truck"}
 
-    # 3. Panel Status Integrasi Sistem di Samping / Bawah Video
+    # Input dinamis untuk URL stream
+    live_url = st.text_input("URL Live Stream:", value=STREAM_URL)
+
+    # 2. MEMBUAT LAYOUT KOLOM (Memperbaiki error variabel 'left' & 'right' yang tidak terbaca)
+    left, right = st.columns([1, 1])
+
+    # ── SISI KIRI: Embed Player Live dari Browser ────────────────────────────────
+    with left:
+        st.subheader("📺 Live Feed Player")
+        
+        # Ekstrak VIDEO_ID jika user mengganti URL YouTube di input text box
+        current_video_id = VIDEO_ID
+        if "youtube.com/watch?v=" in live_url:
+            current_video_id = live_url.split("v=")[1].split("&")[0]
+        elif "youtu.be/" in live_url:
+            current_video_id = live_url.split("youtu.be/")[1].split("?")[0]
+
+        embed_html = f"""
+        <div>
+            <iframe width="100%" height="315"
+                src="https://www.youtube.com/embed/{current_video_id}?autoplay=1&mute=1&rel=0"
+                frameborder="0"
+                allow="autoplay; encrypted-media; fullscreen"
+                allowfullscreen
+                style="border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+             iframe>
+            <p style="color:gray; font-size:0.82em; margin-top:8px;">
+                Jika video tidak muncul, coba refresh halaman. &nbsp;
+                <a href="{live_url}" target="_blank" style="color:#2d6a9f; text-decoration:none; font-weight:bold;">
+                    Buka di Tab Baru →
+                </a>
+            </p>
+        </div>
+        """
+        st.components.v1.html(embed_html, height=350)
+
+    # ── SISI KANAN: Hasil Pemrosesan Frame AI Bumper ──────────────────────────
+    with right:
+        st.subheader("🤖 Hasil Deteksi YOLO")
+        frame_ph = st.empty()
+        stat_ph  = st.empty()
+        info_ph  = st.empty()
+        status_ph = st.empty()
+
+        # Inisialisasi bridge di session_state agar berjalan secara persistent di background thread
+        if "detector_bridge" not in st.session_state:
+            from detector import StreamlitDetectorBridge
+            st.session_state.detector_bridge = StreamlitDetectorBridge()
+
+        bridge = st.session_state.detector_bridge
+
+        if run:
+            # Jalankan background thread detektor jika belum menyala
+            if not bridge.is_running:
+                status_ph.info("Menghubungkan AI Engine ke Live Edge...")
+                bridge.start(live_url, conf=conf)
+
+            # Penanganan jika terjadi kendala stream pada detector.py
+            if bridge.error:
+                frame_ph.error(f"Error Deteksi: {bridge.error}")
+                if st.button("🔄 Reset & Coba Lagi", key="retry_btn"):
+                    bridge.stop()
+                    if "detector_bridge" in st.session_state:
+                        del st.session_state["detector_bridge"]
+                    st.rerun()
+            
+            # Jika frame terbaru dari ujung live stream berhasil ditangkap
+            elif bridge.latest_frame is not None:
+                with bridge._lock:
+                    frame = bridge.latest_frame.copy()
+                    stats = bridge.latest_stats.copy()
+
+                # Tampilkan visualisasi frame berkotak (Bbox) hasil inferensi YOLO
+                frame_ph.image(frame, channels="RGB", use_container_width=True,
+                               caption=f"AI Monitor Live Edge | Sinkronisasi: {stats.get('ts', '')}")
+
+                # Format data statistik counter kendaraan
+                vehicles = {VEHICLE_LABELS.get(k, k): v for k, v in stats.get("vehicles", {}).items()}
+
+                with stat_ph.container():
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Total Objek", stats.get("total", 0))
+                    c2.metric("Kendaraan", sum(vehicles.values()))
+                    c3.metric("Objek Lain", stats.get("others", 0))
+
+                if vehicles:
+                    info_ph.markdown("📊 **Breakdown:** " + " | ".join(f"**{k}:** {v}" for k, v in vehicles.items()))
+                status_ph.empty()
+            else:
+                frame_ph.info("Menghubungkan ke Live Edge. Menunggu frame pertama... (5-15 detik)")
+
+            # Auto-refresh halaman dashboard agar UI terus memperbarui frame dari background thread
+            import time as _time
+            _time.sleep(refresh)
+            st.rerun()
+
+        else:
+            # Jika toggle dimatikan, matikan thread background agar menghemat CPU/RAM server
+            if bridge.is_running:
+                bridge.stop()
+            frame_ph.info("Sistem AI dalam posisi Standby. Aktifkan toggle **Mulai Deteksi** di panel samping untuk memproses.")
+
+    # ── Bagian Bawah: Log Pelanggaran Terdeteksi Terkini ───────────────────────
     st.markdown("---")
-    st.subheader("🤖 Status AI Enforcement Core")
+    st.markdown("#### 🚨 Log Pelanggaran Lalu Lintas Terkini (Database)")
     
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.success("🟢 AI Core Active")
-    with col2:
-        st.info(f"📦 Model: {YOLO_MODEL}")
-    with col3:
-        st.warning("⚡ Mode: Low-Latency Stream")
-
-    # Log pelaporan pelanggaran langsung (Mock dari Database Terbaru)
-    st.markdown("#### 🚨 Pelanggaran Terdeteksi Terkini")
-    df = load_data(days_back=1) # ambil data hari ini
+    # Memuat log yang tersimpan di SQLite dari engine detektor utama
+    df = load_data(days_back=1)
     if not df.empty:
         st.dataframe(
             df[['timestamp', 'plate_number', 'violation_type', 'confidence']].head(5),
             use_container_width=True
         )
     else:
-        st.info("Belum ada pelanggaran baru yang tercatat dalam 24 jam terakhir.")
+        st.info("Belum ada pelanggaran baru yang tercatat masuk ke database hari ini.")
+        
     # ── Kiri: embed YouTube ────────────────────────────────
     with left:
         st.subheader("📺 Live Feed")
