@@ -34,34 +34,6 @@ logger = logging.getLogger(__name__)
 
 
 
-tart_point = sv.Point(x=100, y=400)
-end_point = sv.Point(x=1100, y=400)
-line_zone = sv.LineZone(start=start_point, end=end_point)
-
-# 2. Di dalam fungsi pemrosesan frame perulangan:
-# Pastikan menggunakan model.track() milik YOLOv8, bukan .predict()
-results = model.track(frame, persist=True, tracker="bytetrack.yaml")[0]
-
-# Konversi ke format supervision
-detections = sv.Detections.from_ultralytics(results)
-
-# Update line counter menggunakan tracking ID dari ByteTRACK
-line_zone.trigger(detections)
-
-# Gambar garis dan angka perhitungan pada frame
-line_annotator = sv.LineZoneAnnotator(thickness=4, text_thickness=2, text_scale=1)
-annotated_frame = line_annotator.annotate(frame=annotated_frame, line_counter=line_zone)
-
-# Contoh logika jika mendeteksi mobil di jalur busway / parkir ilegal:
-if pelanggaran_terdeteksi:
-    db = DatabaseManager()
-    db.insert_violation(
-        camera_id="CAM_LIVE_YT",
-        vehicle_type=class_name,        # mobil/motor
-        license_plate=plat_nomor,       # dari EasyOCR atau "UNKNOWN" jika blur
-        violation_type="busway_violation", 
-        duration_seconds=duration
-    )
 # ============================================================
 # DEPENDENCY CHECK
 # ============================================================
