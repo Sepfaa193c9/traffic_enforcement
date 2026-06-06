@@ -790,14 +790,14 @@ def page_realtime():
 
         bridge = st.session_state.detector_bridge
 
-   if run:
-    if not bridge.is_running:
+    if run:
+        if not bridge.is_running:
         status_ph.info("Menghubungkan ke stream...")
         bridge.start(STREAM_URL, conf=conf)
         status_ph.empty()
 
     # LOOPING EFEKTIF TANPA ST.RERUN() GLOBAL
-    while run and bridge.is_running:
+        while run and bridge.is_running:
         if bridge.latest_frame is not None:
             with bridge._lock:
                 frame = bridge.latest_frame.copy()
@@ -821,7 +821,6 @@ def page_realtime():
         
         # Jeda tipis (misal 30ms ~ 30 FPS UI update), bukan jeda detik
         time.sleep(0.03)
-
 
 
     # ── Section: Demo Detector ─────────────────────────────
