@@ -734,8 +734,8 @@ def _grab_frame_mjpeg(stream_url: str):
 def page_realtime():
     import time as _time
 
-    STREAM_URL = "https://trafficvision.live/?search=indonesia&camera=jogjacctv-811"
-    VIDEO_ID   = "AQd-p5hFtQo"
+    STREAM_URL = "https://youtu.be/oIB4ADYlFXg?si=oh5I4i2KiXz4PB0m"
+    VIDEO_ID   = "oIB4ADYlFXg"
 
     st.title("📱 Real-time Monitor")
 
