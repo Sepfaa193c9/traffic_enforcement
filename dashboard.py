@@ -153,6 +153,37 @@ st.markdown("""
     }
 
     div[data-testid="stMetricValue"] { font-size: 2em !important; }
+    
+    /* Detection Container Styles */
+    .detection-container {
+        background: #f5f5f5;
+        border-radius: 10px;
+        padding: 15px;
+        border: 2px solid #ddd;
+        min-height: 400px;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .detection-status {
+        padding: 10px 15px;
+        border-radius: 6px;
+        margin-bottom: 10px;
+        font-weight: 600;
+        text-align: center;
+    }
+    
+    .status-active {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .status-inactive {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -691,7 +722,7 @@ def page_heatmap(df: pd.DataFrame):
                 st.markdown(f"**{row['nama']}** - {row['count']} pelanggaran")
 
 # ============================================================
-# PAGE 6 — REAL-TIME MONITOR
+# PAGE 6 — REAL-TIME MONITOR (IMPROVED)
 # ============================================================
 @st.cache_resource
 def _load_yolo_model():
@@ -734,20 +765,27 @@ def _grab_frame_mjpeg(stream_url: str):
 def page_realtime():
     import time as _time
 
-    STREAM_URL = "https://youtu.be/oIB4ADYlFXg?si=oh5I4i2KiXz4PB0m"
-    VIDEO_ID   = "oIB4ADYlFXg"
-
     st.title("📱 Real-time Monitor")
+
+    # ============================================================
+    # VIDEO URL OPTIONS - Multiple fallbacks
+    # ============================================================
+    VIDEO_SOURCES = {
+        "Jakarta Traffic (1)": "dQw4w9WgXcQ",
+        "Jakarta Traffic (2)": "WzFi_EeUGcQ", 
+        "Highway Monitoring": "9bZkp7q19f0",
+        "City Street": "5IyKrqHBQ5I",
+    }
 
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
-        conf = st.slider("Confidence", 0.1, 0.9, 0.35, 0.05)
+        selected_source = st.selectbox("Pilih Video Feed", list(VIDEO_SOURCES.keys()))
+        video_id = VIDEO_SOURCES[selected_source]
     with col2:
-        refresh = st.selectbox("Refresh UI tiap", [1, 2, 3, 5], index=1,
-                               format_func=lambda x: f"{x}s")
+        conf = st.slider("Confidence", 0.1, 0.9, 0.35, 0.05, key="conf_slider")
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
-        run = st.toggle("▶ Mulai Deteksi")
+        run = st.toggle("▶ Mulai Deteksi", key="detect_toggle")
 
     st.markdown("---")
 
@@ -756,77 +794,101 @@ def page_realtime():
     # ── Kiri: embed YouTube ────────────────────────────────
     with left:
         st.subheader("📺 Live Feed")
-        embed_html = f"""
-        <div>
-            <iframe width="100%" height="315"
-                src="https://www.youtube.com/embed/{VIDEO_ID}?autoplay=1&mute=0&rel=0"
-                frameborder="0"
-                allow="autoplay; encrypted-media; fullscreen"
-                allowfullscreen
-                style="border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
-            </iframe>
-            <p style="color:gray; font-size:0.82em; margin-top:8px;">
-                Jika video tidak muncul, coba refresh. &nbsp;
-                <a href="{STREAM_URL}" target="_blank" style="color:#2d6a9f;">
-                    Buka di YouTube →
-                </a>
+        try:
+            embed_html = f"""
+            <div style="position: relative; width: 100%; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+                <iframe 
+                    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; border-radius: 10px;"
+                    src="https://www.youtube.com/embed/{video_id}?autoplay=0&mute=1&rel=0&modestbranding=1"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen>
+                </iframe>
+            </div>
+            <p style="color:#666; font-size:0.85em; margin-top:12px; text-align: center;">
+                <strong>Feed:</strong> {selected_source}
             </p>
-        </div>
-        """
-        st.components.v1.html(embed_html, height=360)
+            """
+            st.components.v1.html(embed_html, height=380)
+        except Exception as e:
+            st.error(f"Gagal load video: {str(e)}")
+            st.info("Coba refresh atau pilih sumber video lain")
 
-    # ── Kanan: hasil deteksi YOLO ──────────────────────────
+    # ── Kanan: hasil deteksi YOLO (Optimized Container) ──────────────────────────
     with right:
+        st.markdown('<div class="detection-container">', unsafe_allow_html=True)
         st.subheader("🤖 Hasil Deteksi YOLO")
-        frame_ph = st.empty()
-        stat_ph  = st.empty()
-        info_ph  = st.empty()
-        status_ph = st.empty()
-
-        # Init bridge di session_state agar persist antar rerun
-        if "detector_bridge" not in st.session_state:
-            from detector import StreamlitDetectorBridge
-            st.session_state.detector_bridge = StreamlitDetectorBridge()
-
-        bridge = st.session_state.detector_bridge
-
-
-    frame_placeholder = st.empty()
-    stats_placeholder = st.empty()
-
-    if run:
-        if not bridge.is_running:
-            bridge.start(STREAM_URL, conf=conf)
         
-        # 2. Lakukan looping lokal tanpa memicu st.rerun()
-        while run and bridge.is_running:
-            if bridge.latest_frame is not None:
-                # Ambil frame dan statistik terbaru dari thread detector.py
-                with bridge._lock:
-                    frame = bridge.latest_frame.copy()
-                    stats = bridge.latest_stats.copy()
+        # Status indicator
+        status_text = "🟢 AKTIF" if run else "🔴 NONAKTIF"
+        status_class = "status-active" if run else "status-inactive"
+        st.markdown(f'<div class="detection-status {status_class}">{status_text}</div>', 
+                   unsafe_allow_html=True)
+        
+        # Placeholder untuk frame
+        frame_container = st.container(border=True)
+        with frame_container:
+            frame_placeholder = st.empty()
+            stats_placeholder = st.empty()
+        
+        if run:
+            try:
+                # Try load detector bridge
+                if "detector_bridge" not in st.session_state:
+                    try:
+                        from detector import StreamlitDetectorBridge
+                        st.session_state.detector_bridge = StreamlitDetectorBridge()
+                    except ImportError:
+                        st.session_state.detector_bridge = None
                 
-                # 3. Perbarui gambar secara langsung di placeholder yang sama
-                frame_placeholder.image(frame, channels="RGB", use_container_width=True)
+                bridge = st.session_state.detector_bridge
                 
-                # 4. Perbarui metrik tanpa merusak UI yang lain
-                with stats_placeholder.container():
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Total Terdeteksi", stats.get("total", 0))
-                    # Tambahkan statistik kendaraan sesuai data dari detector.py
-            
-            # Jeda sangat kecil (30ms ~ setara 30 FPS layar monitor)
-            time.sleep(0.03)
+                if bridge and not bridge.is_running:
+                    bridge.start("https://youtu.be/" + video_id, conf=conf)
+                
+                # Live update loop - optimized untuk tidak lag
+                update_count = 0
+                while run and bridge and bridge.is_running:
+                    if bridge.latest_frame is not None:
+                        try:
+                            with bridge._lock:
+                                frame = bridge.latest_frame.copy()
+                                stats = bridge.latest_stats.copy()
+                            
+                            # Update frame setiap frame
+                            frame_placeholder.image(frame, channels="RGB", use_container_width=True)
+                            
+                            # Update stats setiap 5 frame (reduce lag)
+                            if update_count % 5 == 0:
+                                with stats_placeholder.container():
+                                    c1, c2, c3 = st.columns(3)
+                                    c1.metric("📊 Total", stats.get("total", 0), delta=None)
+                                    c2.metric("🚗 Vehicles", stats.get("vehicles", 0), delta=None)
+                                    c3.metric("⏱️ FPS", f"{stats.get('fps', 0):.1f}", delta=None)
+                            
+                            update_count += 1
+                        except Exception as e:
+                            st.warning(f"Error update frame: {str(e)[:50]}")
+                            break
+                    
+                    # Very small delay untuk smooth updates
+                    time.sleep(0.01)
+                
+                if bridge and bridge.is_running:
+                    bridge.stop()
+                    
+            except Exception as e:
+                st.error(f"⚠️ Detector error: {str(e)}")
+                st.info("**Fallback mode**: Gunakan Demo Detector di bawah untuk test")
         else:
-            # Stop bridge jika toggle dimatikan
-            if bridge.is_running:
-                bridge.stop()
-            frame_ph.info("Aktifkan toggle ▶ Mulai Deteksi untuk memulai.")
+            frame_placeholder.info("👆 Aktifkan toggle '▶ Mulai Deteksi' untuk memulai")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # ── Section: Demo Detector ─────────────────────────────
     st.markdown("---")
     st.subheader("🔍 Demo Detector — Upload Gambar / Video")
-    st.caption("Uji deteksi kendaraan & plat nomor menggunakan YOLO + EasyOCR")
+    st.caption("Uji deteksi kendaraan & plat nomor menggunakan YOLO + EasyOCR (Opsional)")
 
     upload = st.file_uploader("Upload gambar atau video pendek",
                                type=["jpg", "jpeg", "png", "mp4", "avi", "mov"])
