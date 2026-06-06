@@ -1120,12 +1120,16 @@ class StreamlitDetectorBridge:
 
     def _open_cap(self, stream_url: str) -> cv2.VideoCapture:
         """Buka VideoCapture dengan optimasi untuk live stream."""
-        cap = cv2.VideoCapture(stream_url)
+        # Menambahkan backend API preference (CAP_FFMPEG) jika tersedia untuk stabilitas network stream
+        cap = cv2.VideoCapture(stream_url, cv2.CAP_FFMPEG)
         if not cap.isOpened():
             return cap
         
+        # Set buffer sekecil mungkin
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         
+        # PENTING: Untuk YouTube LIVE asli, properti FRAME_COUNT biasanya bernilai 0 atau minus.
+        # Baris di bawah ini hanya berjalan jika source adalah file video rekaman (bukan live stream asli)
         total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
         if total and total > 100:
             target = int(total * 0.95)
@@ -1135,11 +1139,12 @@ class StreamlitDetectorBridge:
         return cap
 
     def _run(self, source: str, conf: float):
-        """★ FIX: _run() adalah standalone — tidak depends on detector module."""
         try:
             import cv2
             from ultralytics import YOLO
             from collections import Counter
+            from datetime import datetime
+            import time
 
             # ── 1. Resolve URL ──────────────────────────────
             stream_url = self._resolve_source(source)
@@ -1150,9 +1155,11 @@ class StreamlitDetectorBridge:
             model(dummy, conf=conf, verbose=False)
 
             vehicle_keys = {"car", "motorcycle", "bus", "truck", "bicycle"}
-            frame_skip   = 3
-            frame_idx    = 0
-            reconnect_n  = 0
+            
+            # Trik Live Stream: Jika source adalah YouTube LIVE, set frame_skip ke 1 
+            # karena kita akan melakukan skipping menggunakan cap.grab() di bawah agar tidak lag.
+            frame_skip    = 1 
+            reconnect_n   = 0
 
             # ── 3. Loop dengan reconnect otomatis ───────────
             while not self._stop_event.is_set():
@@ -1174,7 +1181,7 @@ class StreamlitDetectorBridge:
 
                 reconnect_n = 0
 
-                # ── 4. Frame read loop ───────────────────────
+                # ── 4. Frame read loop (FIXED FOR LIVE STREAM & TRACKING) ───────────────────────
                 startup_deadline = time.time() + self._STARTUP_TIMEOUT
                 last_frame_time  = time.time()
                 got_first_frame  = False
@@ -1182,11 +1189,7 @@ class StreamlitDetectorBridge:
                 while not self._stop_event.is_set():
 
                     if not got_first_frame and time.time() > startup_deadline:
-                        self.error = (
-                            "Timeout: tidak ada frame dalam "
-                            f"{self._STARTUP_TIMEOUT:.0f} detik. "
-                            "Coba refresh atau ganti stream URL."
-                        )
+                        self.error = f"Timeout: tidak ada frame dalam {self._STARTUP_TIMEOUT:.0f} detik."
                         self._stop_event.set()
                         break
 
@@ -1194,31 +1197,47 @@ class StreamlitDetectorBridge:
                         logger.warning("[Bridge] Frame timeout, reconnect...")
                         break
 
-                    ret, frame = cap.read()
+                    # 🔥 FIX CRITICAL LIVE STREAM: Buang antrean frame lama di buffer memori OpenCV
+                    # Kita lakukan .grab() sebanyak 4-5 kali dengan cepat untuk meloncat langsung ke LIVE EDGE
+                    for _ in range(4):
+                        cap.grab()
+
+                    # Ambil frame yang benar-benar paling baru/segar dari internet
+                    ret, frame = cap.retrieve()
 
                     if not ret:
-                        logger.warning("[Bridge] cap.read() gagal, reconnect...")
+                        logger.warning("[Bridge] cap.retrieve() gagal, reconnect...")
                         break
 
                     last_frame_time = time.time()
                     got_first_frame = True
 
-                    frame_idx += 1
-                    if frame_idx % frame_skip != 0:
-                        continue
-
-                    # ── 5. YOLO inference ────────────────────
+                    # ── 5. YOLO tracking (FIXED WORKFLOW ROBOFLOW) ────────────────────
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    results   = model(frame_rgb, conf=conf, verbose=False)[0]
+                    
+                    # Ubah dari model() biasa ke model.track() agar ByteTRACK aktif memberikan ID kendaraan
+                    results = model.track(
+                        frame_rgb, 
+                        conf=conf, 
+                        persist=True,        # Wajib True agar ID pelacakan konsisten antar frame
+                        tracker="bytetrack.yaml", 
+                        verbose=False
+                    )[0]
+                    
                     annotated = results.plot()
 
-                    cls_list = [model.names[int(c)] for c in results.boxes.cls]
-                    cnt      = Counter(cls_list)
+                    # Ekstraksi nama kelas objek yang terdeteksi
+                    cls_list = []
+                    if results.boxes is not None and len(results.boxes) > 0:
+                        # Pastikan results.boxes.cls aman diakses
+                        cls_list = [model.names[int(c)] for c in results.boxes.cls.cpu().tolist()]
+                    
+                    cnt = Counter(cls_list)
 
                     with self._lock:
                         self.latest_frame = annotated
                         self.latest_stats = {
-                            "total":    len(results.boxes),
+                            "total":    len(results.boxes) if results.boxes is not None else 0,
                             "vehicles": {k: v for k, v in cnt.items() if k in vehicle_keys},
                             "others":   sum(v for k, v in cnt.items() if k not in vehicle_keys),
                             "ts":       datetime.now().strftime("%H:%M:%S"),
@@ -1247,7 +1266,6 @@ class StreamlitDetectorBridge:
             logger.error(f"[Bridge] Error: {e}", exc_info=True)
         finally:
             self.is_running = False
-
 
 # ============================================================
 # CLI
