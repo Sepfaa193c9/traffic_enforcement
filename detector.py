@@ -1,3 +1,4 @@
+"""
 Usage:
     python detector.py                                    # Webcam + display
     python detector.py --source video.mp4                 # File video
@@ -485,13 +486,6 @@ class TrafficEnforcementSystem:
     def _load_db(self):
         from database import DatabaseManager
         self.db = DatabaseManager()
-        if self.db_wal_mode:
-            try:
-                self.db._conn.execute("PRAGMA journal_mode=WAL")
-                self.db._conn.execute("PRAGMA synchronous=NORMAL")
-                logger.info("SQLite WAL mode aktif ✓")
-            except Exception:
-                pass
         self.async_writer = AsyncDBWriter(self.db)
         logger.info("Async DB writer started ✓")
 
@@ -1068,28 +1062,25 @@ def process_single_frame(frame_rgb: np.ndarray, conf: float = 0.35) -> dict:
 
 
 # ============================================================
-# STREAMLIT BRIDGE
+# STREAMLIT BRIDGE (FIX: avoid circular import)
 # ============================================================
 
 class StreamlitDetectorBridge:
     """
-    Jalankan detector di background thread.
+    ★ FIX v3: Jalankan detector di background thread tanpa circular import.
+    
     Streamlit polling latest_frame dan latest_stats via shared state.
 
-    ★★ FIX v2 — perubahan dari versi sebelumnya:
-      1. get_youtube_stream_url dipanggil dengan live_from_start=False
-         → OpenCV tidak perlu seek 11 jam rekaman.
-      2. cap.set(CAP_PROP_BUFFERSIZE, 1) → latency minimal.
-      3. Reconnect otomatis jika stream putus (max 3x).
-      4. Timeout guard: berhenti jika >90 detik tanpa satu frame pun.
-      5. Frame timeout 30 detik per frame → tidak hang selamanya.
+    ★★ FIX vs v2:
+      1. TIDAK import dari detector module di _run() → avoid circular import
+      2. _resolve_source() & _open_cap() adalah method lokal
+      3. YOLO, cv2, dll di-import di awal _run() tanpa depends on detector
+      4. Reconnect otomatis (max 3x) + timeout guard
     """
 
-    # Konstanta reconnect & timeout
-    _MAX_RECONNECT   = 3        # maks percobaan reconnect
-    _FRAME_TIMEOUT   = 30.0     # detik: timeout per frame read
-    _STARTUP_TIMEOUT = 90.0     # detik: timeout total sebelum frame pertama
-
+    _MAX_RECONNECT   = 3
+    _FRAME_TIMEOUT   = 30.0
+    _STARTUP_TIMEOUT = 90.0
 
     def __init__(self):
         self._thread     = None
@@ -1117,51 +1108,39 @@ class StreamlitDetectorBridge:
         self._stop_event.set()
         self.is_running = False
 
-    # ----------------------------------------------------------
-    # _resolve_source — pisah resolusi URL agar bisa di-retry
-    # ----------------------------------------------------------
     def _resolve_source(self, source: str) -> str:
-        """
-        ★ Resolve YouTube URL ke direct stream URL dengan live_from_start=False.
-        Kalau bukan YouTube, kembalikan apa adanya.
-        """
+        """Resolve YouTube URL ke direct stream URL."""
         if is_youtube_url(source):
-            # get_youtube_stream_url sudah diupdate pakai live_from_start=False
-            return get_youtube_stream_url(source)
+            try:
+                return get_youtube_stream_url(source)
+            except Exception as e:
+                logger.error(f"Failed to resolve YouTube URL: {e}")
+                raise
         return source
 
-    # ----------------------------------------------------------
-    # _open_cap — buka VideoCapture dengan semua optimasi live
-    # ----------------------------------------------------------
     def _open_cap(self, stream_url: str) -> cv2.VideoCapture:
-        """
-        ★ Buka VideoCapture, set buffer=1, seek ke live edge jika HLS.
-        """
+        """Buka VideoCapture dengan optimasi untuk live stream."""
         cap = cv2.VideoCapture(stream_url)
         if not cap.isOpened():
             return cap
-
-        # ★ Buffer 1 frame → selalu ambil frame terbaru
+        
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-        # ★ Untuk HLS: seek ke 95% agar langsung live edge
+        
         total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
         if total and total > 100:
             target = int(total * 0.95)
             cap.set(cv2.CAP_PROP_POS_FRAMES, target)
             logger.info(f"[Bridge] Seek ke live edge frame {target}/{int(total)}")
-
+        
         return cap
 
-    # ----------------------------------------------------------
-    # _run — main loop background thread
-    # ----------------------------------------------------------
     def _run(self, source: str, conf: float):
-        import cv2
-        from ultralytics import YOLO
-        from collections import Counter
-
+        """★ FIX: _run() adalah standalone — tidak depends on detector module."""
         try:
+            import cv2
+            from ultralytics import YOLO
+            from collections import Counter
+
             # ── 1. Resolve URL ──────────────────────────────
             stream_url = self._resolve_source(source)
 
@@ -1178,7 +1157,6 @@ class StreamlitDetectorBridge:
             # ── 3. Loop dengan reconnect otomatis ───────────
             while not self._stop_event.is_set():
 
-                # Buka / re-buka capture
                 cap = self._open_cap(stream_url)
                 if not cap.isOpened():
                     reconnect_n += 1
@@ -1186,7 +1164,6 @@ class StreamlitDetectorBridge:
                         self.error = "Tidak bisa buka stream setelah beberapa percobaan."
                         break
                     logger.warning(f"[Bridge] Cap tidak terbuka, retry {reconnect_n}/{self._MAX_RECONNECT}...")
-                    # Re-resolve URL (token YouTube bisa expired)
                     try:
                         stream_url = self._resolve_source(source)
                     except Exception as e:
@@ -1195,7 +1172,7 @@ class StreamlitDetectorBridge:
                     time.sleep(3)
                     continue
 
-                reconnect_n = 0   # reset counter jika berhasil buka
+                reconnect_n = 0
 
                 # ── 4. Frame read loop ───────────────────────
                 startup_deadline = time.time() + self._STARTUP_TIMEOUT
@@ -1204,7 +1181,6 @@ class StreamlitDetectorBridge:
 
                 while not self._stop_event.is_set():
 
-                    # ★ Timeout guard sebelum frame pertama
                     if not got_first_frame and time.time() > startup_deadline:
                         self.error = (
                             "Timeout: tidak ada frame dalam "
@@ -1214,10 +1190,9 @@ class StreamlitDetectorBridge:
                         self._stop_event.set()
                         break
 
-                    # ★ Timeout per frame (stream mati)
                     if got_first_frame and (time.time() - last_frame_time) > self._FRAME_TIMEOUT:
                         logger.warning("[Bridge] Frame timeout, reconnect...")
-                        break   # keluar ke reconnect loop
+                        break
 
                     ret, frame = cap.read()
 
@@ -1251,11 +1226,9 @@ class StreamlitDetectorBridge:
 
                 cap.release()
 
-                # Jika stop diminta, keluar
                 if self._stop_event.is_set():
                     break
 
-                # Re-resolve sebelum reconnect (token bisa expired)
                 reconnect_n += 1
                 if reconnect_n > self._MAX_RECONNECT:
                     self.error = "Stream terputus dan gagal reconnect."

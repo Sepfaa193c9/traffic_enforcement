@@ -1,300 +1,141 @@
 # ============================================================
-# generate_demo_data.py — Generator Data Sintetis
+# generate_demo_data.py — Generate sample violation data
 # DISHUB DKI Jakarta | AI Open Innovation Challenge 2026
 # ============================================================
 """
-Generate data pelanggaran sintetis yang realistis untuk testing dashboard.
+Generator untuk sample data pelanggaran lalu lintas.
+Digunakan untuk:
+- Testing dashboard tanpa detector berjalan
+- Demo / presentasi
+- Load testing database
 
 Usage:
-    python generate_demo_data.py                    # 300 data, 30 hari
-    python generate_demo_data.py --count 500        # 500 data
-    python generate_demo_data.py --count 100 --days 7
-    python generate_demo_data.py --reset            # Hapus data lama dulu
+    python generate_demo_data.py            # Default: 300 records, 30 hari terakhir
+    python generate_demo_data.py 500 60     # Custom: 500 records, 60 hari
 """
 
-import argparse
 import random
 import sqlite3
 from datetime import datetime, timedelta
+import logging
 
-from config import CAMERA_LOCATIONS, VIOLATION_TYPES
+from config import DB_PATH
+from database import DatabaseManager
+
+logger = logging.getLogger(__name__)
 
 # ============================================================
-# KONSTANTA DISTRIBUSI REALISTIS
+# SAMPLE DATA POOLS
 # ============================================================
 
 VEHICLE_TYPES = ["car", "motorcycle", "bus", "truck", "bicycle"]
-VEHICLE_WEIGHTS = [0.45, 0.35, 0.08, 0.09, 0.03]   # Mobil & motor dominan
 
-# Distribusi jenis pelanggaran
-VIOLATION_WEIGHTS = {
-    "busway_violation":    0.35,
-    "illegal_parking":     0.40,
-    "bike_lane_violation": 0.15,
-    "wrong_way":           0.10,
-}
-
-# Durasi parkir liar (detik) — distribusi lognormal
-PARKING_DURATION_MEAN = 300   # 5 menit rata-rata
-PARKING_DURATION_STD  = 180
-
-# Jam peak traffic Jakarta (distribusi lebih realistis)
-# Pagi: 07-09, Siang: 12-13, Sore: 16-20
-HOUR_WEIGHTS = [
-    0.5, 0.3, 0.2, 0.2, 0.2, 0.4,   # 00-05
-    0.8, 2.5, 3.0, 1.8, 1.2, 1.5,   # 06-11
-    1.8, 1.2, 1.0, 1.2, 2.5, 3.2,   # 12-17
-    2.8, 1.8, 1.2, 0.9, 0.7, 0.6,   # 18-23
+VIOLATION_TYPES = [
+    "busway_violation",
+    "bike_lane_violation",
+    "illegal_parking",
+    "wrong_way",
 ]
 
-# Template plat nomor Jakarta & sekitarnya
-PLATE_PREFIXES = [
-    "B", "D", "F", "Z", "T", "A", "E",
-]
-PLATE_NUMBERS = [f"{random.randint(1000, 9999)}" for _ in range(200)]
-PLATE_SUFFIXES = [
-    "ABC", "BCD", "CDE", "DEF", "EFG", "FGH", "GHI", "HIJ",
-    "IJK", "JKL", "KLM", "LMN", "MNO", "NOP", "OPQ", "PQR",
-    "QRS", "RST", "STU", "TUV", "UVW", "VWX", "WXY", "XYZ",
-    "AAA", "BBB", "CCC", "DDD", "EEE", "FFF",
+LICENSE_PLATES = [
+    "B1234AA", "B5678BB", "B9012CC", "B3456DD", "B7890EE",
+    "B1111FF", "B2222GG", "B3333HH", "B4444II", "B5555JJ",
+    "B6666KK", "B7777LL", "B8888MM", "B9999NN", "B0000OO",
+    "B1010PP", "B2020QQ", "B3030RR", "B4040SS", "B5050TT",
+    "B6060UU", "B7070VV", "B8080WW", "B9090XX", "B0101YY",
 ]
 
-ETL_STATUS_WEIGHTS = {
-    "pending": 0.55,
-    "issued":  0.35,
-    "paid":    0.10,
-}
+ZONES = [
+    "busway_sudirman",
+    "bike_lane",
+    "no_parking_zone",
+]
 
-ZONE_NAMES = {
-    "busway_violation":    ["busway_sudirman", "busway_thamrin", "busway_gatot_sub"],
-    "illegal_parking":     ["no_parking_zone", "yellow_line_zone", "sidewalk_zone"],
-    "bike_lane_violation": ["bike_lane", "bike_lane_south"],
-    "wrong_way":           ["one_way_zone", "contraflow_zone"],
-}
+CAMERAS = ["CAM_001", "CAM_002", "CAM_003", "CAM_004", "CAM_005"]
+
+LATITUDES = [-6.2088, -6.1751, -6.2146, -6.2297, -6.1944]
+LONGITUDES = [106.8456, 106.8650, 106.8451, 106.8295, 106.8229]
 
 # ============================================================
-# HELPERS
+# GENERATOR
 # ============================================================
 
-def random_plate() -> str:
-    prefix = random.choice(PLATE_PREFIXES)
-    number = random.randint(1000, 9999)
-    suffix = random.choice(PLATE_SUFFIXES)
-    return f"{prefix} {number} {suffix}"
-
-def random_timestamp(days_back: int) -> str:
-    """Timestamp acak dengan distribusi jam yang realistis."""
-    now   = datetime.now()
-    start = now - timedelta(days=days_back)
-    # Random hari
-    day_offset = random.uniform(0, days_back)
-    base = start + timedelta(days=day_offset)
-
-    # Random jam dengan bobot peak hour
-    hour = random.choices(range(24), weights=HOUR_WEIGHTS)[0]
-    minute  = random.randint(0, 59)
-    second  = random.randint(0, 59)
-
-    ts = base.replace(hour=hour, minute=minute, second=second, microsecond=0)
-    return ts.isoformat()
-
-def random_duration(violation_type: str) -> float:
-    """Durasi pelanggaran (detik) sesuai jenisnya."""
-    if violation_type == "illegal_parking":
-        dur = random.gauss(PARKING_DURATION_MEAN, PARKING_DURATION_STD)
-        return max(30.0, round(dur, 1))
-    elif violation_type == "busway_violation":
-        return round(random.uniform(5.0, 120.0), 1)
-    elif violation_type == "bike_lane_violation":
-        return round(random.uniform(3.0, 60.0), 1)
-    else:
-        return round(random.uniform(2.0, 30.0), 1)
-
-def random_coords(cam_id: str) -> tuple[float, float]:
-    """Koordinat sedikit di-scatter dari posisi kamera."""
-    cam   = CAMERA_LOCATIONS.get(cam_id, {"lat": -6.2088, "lon": 106.8456})
-    lat   = cam["lat"] + random.uniform(-0.001, 0.001)
-    lon   = cam["lon"] + random.uniform(-0.001, 0.001)
-    return round(lat, 6), round(lon, 6)
-
-# ============================================================
-# MAIN GENERATOR
-# ============================================================
-
-def generate_demo_data(count: int = 300, days_back: int = 30, reset: bool = False) -> int:
+def generate_demo_data(count: int = 300, days_back: int = 30):
     """
-    Generate data pelanggaran sintetis ke violations.db.
-
+    Generate sample violation records untuk testing.
+    
     Args:
-        count:     Jumlah record yang dibuat.
-        days_back: Rentang waktu ke belakang (hari).
-        reset:     Hapus data lama sebelum generate.
-
-    Returns:
-        Jumlah record yang berhasil diinsert.
+        count: Jumlah record yang akan dibuat
+        days_back: Distribusi record dalam N hari terakhir
     """
-    from database import DB_PATH, DatabaseManager
-
-    # Init DB (buat tabel jika belum ada)
+    logger.info(f"Generating {count} demo records (last {days_back} days)...")
+    
     db = DatabaseManager()
-
-    conn = sqlite3.connect(DB_PATH)
-
-    if reset:
-        conn.execute("DELETE FROM violations")
-        conn.execute("DELETE FROM etl_tickets")
-        conn.commit()
-        print(f"🗑️  Data lama dihapus.")
-
-    camera_ids = list(CAMERA_LOCATIONS.keys())
-
-    # Buat pool plat nomor — sebagian akan muncul berulang (recidivism)
-    # 80% dari total kendaraan = plat unik, 20% = pelanggar berulang
-    unique_pool  = [random_plate() for _ in range(int(count * 0.7))]
-    repeat_pool  = [random_plate() for _ in range(max(10, int(count * 0.05)))]
-
-    inserted = 0
-    violations_to_insert = []
-
-    print(f"⏳ Generating {count} violation records ({days_back} hari terakhir)...")
-
+    
+    now = datetime.now()
+    violations = []
+    
     for i in range(count):
-        violation_type = random.choices(
-            list(VIOLATION_WEIGHTS.keys()),
-            weights=list(VIOLATION_WEIGHTS.values()),
-        )[0]
+        # Random timestamp dalam range
+        days_offset = random.randint(0, max(1, days_back))
+        hours_offset = random.randint(0, 23)
+        minutes_offset = random.randint(0, 59)
+        
+        ts = now - timedelta(days=days_offset, hours=hours_offset, minutes=minutes_offset)
+        
+        # Random data
+        camera_idx = random.randint(0, len(CAMERAS) - 1)
+        camera_id = CAMERAS[camera_idx]
+        
+        vehicle_type = random.choice(VEHICLE_TYPES)
+        violation_type = random.choice(VIOLATION_TYPES)
+        zone_name = random.choice(ZONES)
+        license_plate = random.choice(LICENSE_PLATES)
+        
+        duration = random.uniform(10, 300)  # 10-300 detik
+        speed = random.uniform(20, 120)  # km/h
+        confidence = random.uniform(0.75, 0.99)
+        
+        violations.append({
+            "timestamp": ts.isoformat(),
+            "camera_id": camera_id,
+            "track_id": random.randint(1000, 9999),
+            "vehicle_type": vehicle_type,
+            "license_plate": license_plate,
+            "violation_type": violation_type,
+            "zone_name": zone_name,
+            "duration_seconds": round(duration, 1),
+            "speed_kmh": round(speed, 1),
+            "confidence": round(confidence, 3),
+            "latitude": LATITUDES[camera_idx],
+            "longitude": LONGITUDES[camera_idx],
+        })
+    
+    # Bulk insert
+    for viol in violations:
+        try:
+            db.save_violation(viol)
+        except Exception as e:
+            logger.warning(f"Failed to insert record: {e}")
+    
+    stats = db.get_statistics(days_back=days_back)
+    logger.info(f"✓ Demo data generated!")
+    logger.info(f"  Total: {stats['total']} violations")
+    logger.info(f"  Types: {stats['per_type']}")
+    logger.info(f"  Unique plates: {stats['unique_plates']}")
 
-        vehicle_type = random.choices(VEHICLE_TYPES, weights=VEHICLE_WEIGHTS)[0]
-        cam_id       = random.choice(camera_ids)
-        lat, lon     = random_coords(cam_id)
-        ts           = random_timestamp(days_back)
-        duration     = random_duration(violation_type)
-        etl_status   = random.choices(
-            list(ETL_STATUS_WEIGHTS.keys()),
-            weights=list(ETL_STATUS_WEIGHTS.values()),
-        )[0]
-
-        # Pilih plat: 15% kemungkinan dari repeat pool
-        if random.random() < 0.15 and repeat_pool:
-            plate = random.choice(repeat_pool)
-        else:
-            plate = random.choice(unique_pool)
-
-        zone = random.choice(ZONE_NAMES.get(violation_type, ["unknown_zone"]))
-
-        violations_to_insert.append((
-            ts,                              # timestamp
-            cam_id,                          # camera_id
-            i + 1,                           # track_id (simulasi)
-            vehicle_type,                    # vehicle_type
-            plate,                           # license_plate
-            violation_type,                  # violation_type
-            zone,                            # zone_name
-            duration,                        # duration_seconds
-            round(random.uniform(0.55, 0.99), 2),  # confidence
-            lat,                             # latitude
-            lon,                             # longitude
-            None,                            # image_path
-            etl_status,                      # etl_status
-            None,                            # etl_ticket_id
-        ))
-
-    # Batch insert
-    conn.executemany(
-        """INSERT INTO violations
-           (timestamp, camera_id, track_id, vehicle_type, license_plate,
-            violation_type, zone_name, duration_seconds, confidence,
-            latitude, longitude, image_path, etl_status, etl_ticket_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        violations_to_insert
-    )
-    conn.commit()
-    inserted = len(violations_to_insert)
-
-    # Generate tiket E-TLE untuk yang sudah "issued"
-    issued_ids = conn.execute(
-        "SELECT id FROM violations WHERE etl_status = 'issued' AND etl_ticket_id IS NULL"
-    ).fetchall()
-
-    tickets = []
-    for row in issued_ids:
-        vid = row[0]
-        ticket_id = f"ETLE-DEMO-{datetime.now().strftime('%Y%m%d')}-{vid:05d}"
-        due_date  = (datetime.now() + timedelta(days=14)).isoformat()
-        tickets.append((ticket_id, vid, due_date))
-
-    if tickets:
-        conn.executemany(
-            "UPDATE violations SET etl_ticket_id = ? WHERE id = ?",
-            [(t[0], t[1]) for t in tickets]
-        )
-        conn.executemany(
-            """INSERT OR IGNORE INTO etl_tickets
-               (ticket_id, violation_id, due_date)
-               VALUES (?, ?, ?)""",
-            tickets
-        )
-        conn.commit()
-
-    conn.close()
-    return inserted
-
-
-# ============================================================
-# PRINT SUMMARY
-# ============================================================
-
-def print_summary():
-    from database import DB_PATH, get_statistics, get_violations_df
-    stats = get_statistics(days_back=9999)
-    df    = get_violations_df(days_back=9999)
-
-    print("\n" + "=" * 50)
-    print("📊 RINGKASAN DATA YANG DIGENERATE")
-    print("=" * 50)
-    print(f"  Total pelanggaran : {stats['total']:,}")
-    print(f"  Plat unik         : {stats['unique_plates']:,}")
-    print(f"  Rata-rata durasi  : {stats['avg_duration']:.0f} detik")
-    print()
-    print("  Jenis Pelanggaran:")
-    for vt, cnt in stats["per_type"].items():
-        bar = "█" * (cnt * 20 // max(stats["per_type"].values()))
-        print(f"    {vt:<30} {cnt:>5}  {bar}")
-    print()
-    print("  Per Kamera:")
-    for cam, cnt in stats["per_camera"].items():
-        print(f"    {cam}  →  {cnt:>4} pelanggaran")
-    print()
-    print("  Status E-TLE:")
-    for status, cnt in stats["etl_summary"].items():
-        print(f"    {status:<12} {cnt:>4}")
-    print("=" * 50)
-    print()
-
-
-# ============================================================
-# CLI
-# ============================================================
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Generate data pelanggaran sintetis untuk testing"
+    import sys
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s"
     )
-    parser.add_argument("--count", type=int, default=300,
-                        help="Jumlah record (default: 300)")
-    parser.add_argument("--days",  type=int, default=30,
-                        help="Rentang hari ke belakang (default: 30)")
-    parser.add_argument("--reset", action="store_true",
-                        help="Hapus data lama sebelum generate")
-    args = parser.parse_args()
-
-    inserted = generate_demo_data(
-        count=args.count,
-        days_back=args.days,
-        reset=args.reset,
-    )
-
-    print(f"✅ {inserted:,} pelanggaran berhasil digenerate!")
-    print_summary()
-    print("🚀 Jalankan dashboard:")
-    print("   streamlit run dashboard.py")
+    
+    count = int(sys.argv[1]) if len(sys.argv) > 1 else 300
+    days = int(sys.argv[2]) if len(sys.argv) > 2 else 30
+    
+    generate_demo_data(count=count, days_back=days)
+    print(f"\n✅ Demo data siap! Buka dashboard dengan:")
+    print(f"   streamlit run dashboard.py")
