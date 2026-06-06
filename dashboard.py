@@ -881,7 +881,7 @@ def page_realtime():
                 st.error(f"⚠️ Detector error: {str(e)}")
                 st.info("**Fallback mode**: Gunakan Demo Detector di bawah untuk test")
         else:
-            frame_placeholder.info("👆 Aktifkan toggle '▶ Mulai Deteksi' untuk memulai")
+            frame_placeholder.info("Aktifkan toggle '▶ Mulai Deteksi' untuk memulai")
         
         st.markdown('</div>', unsafe_allow_html=True)
 
