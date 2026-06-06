@@ -804,6 +804,10 @@ def page_realtime():
             # Tampilkan error jika ada
             if bridge.error:
                 frame_ph.error(f"Error: {bridge.error}")
+                if st.button("🔄 Coba Lagi", key="retry_btn"):
+                    bridge.stop()
+                    del st.session_state["detector_bridge"]
+                    st.rerun()
             elif bridge.latest_frame is not None:
                 with bridge._lock:
                     frame  = bridge.latest_frame.copy()
