@@ -740,13 +740,6 @@ def page_realtime():
     st.header("🎥 Real-time Video Monitor (Live Edge)")
     st.markdown("Monitor siaran langsung kamera lalu lintas DISHUB dengan penanganan latensi rendah.")
 
-    # 1. KONFIGURASI PARAMETER DI SIDEBAR (Dipastikan statis & tidak terganggu rerun)
-    with st.sidebar:
-        st.subheader("⚙️ Real-time Config")
-        conf = st.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05, key="rt_conf")
-        refresh = st.slider("UI Refresh Rate (s)", 0.1, 2.0, 0.5, 0.1, key="rt_refresh")
-        run = st.toggle("▶ Mulai Deteksi", value=False, key="rt_run")
-
     # Fallback variabel jika config.py tidak terbaca
     try:
         from config import VEHICLE_LABELS
@@ -757,10 +750,10 @@ def page_realtime():
     live_url = "https://www.youtube.com/watch?v=AQd-p5hFtQo"
     current_video_id = "AQd-p5hFtQo"
 
-    # 2. MEMBUAT LAYOUT UTAMA (2 KOLOM)
+    # 1. MEMBUAT LAYOUT UTAMA (2 KOLOM)
     left, right = st.columns([1, 1])
 
-    # ── SISI KIRI: Embed Player Live Youtube (Statis, tidak ikut kedip/reload) ──
+    # ── SISI KIRI: Embed Player Live Youtube ──────────────────────────────────
     with left:
         st.subheader("📺 Live Feed Player")
         embed_html = f"""
@@ -779,13 +772,19 @@ def page_realtime():
         """
         st.components.v1.html(embed_html, height=350)
 
-    # ── SISI KANAN: Hasil Pemrosesan Frame AI (Menggunakan Fragment Terisolasi) ──
+    # ── SISI KANAN: Hasil Pemrosesan Frame AI + TOGGLE CONTROL ────────────────
     with right:
         st.subheader("🤖 Hasil Deteksi YOLO")
 
-        # Mengisolasi loop pembaruan gambar menggunakan dekorator st.fragment
-        @st.fragment
-        def render_ai_stream(is_running):
+        conf = st.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05, key="rt_conf")
+        refresh = st.slider("UI Refresh Rate (s)", 0.1, 2.0, 0.5, 0.1, key="rt_refresh")
+
+        is_running_now = st.session_state.get("rt_run", False)
+
+        @st.fragment(run_every=refresh if is_running_now else None)
+        def render_ai_stream():
+            run = st.toggle("▶ Mulai Deteksi", value=False, key="rt_run")
+            
             frame_ph = st.empty()
             stat_ph = st.empty()
             info_ph = st.empty()
@@ -800,8 +799,7 @@ def page_realtime():
 
             bridge = st.session_state.detector_bridge
 
-            if is_running:
-                # Hidupkan backend thread jika belum aktif
+            if run:
                 if not bridge.is_running:
                     bridge.start(live_url, conf=conf)
 
@@ -812,11 +810,9 @@ def page_realtime():
                         frame = bridge.latest_frame.copy()
                         stats = bridge.latest_stats.copy()
 
-                    # Render Image ke UI
                     frame_ph.image(frame, channels="RGB", use_container_width=True,
                                    caption=f"AI Monitor Live Edge | Sinkronisasi: {stats.get('ts', '')}")
 
-                    # Tampilkan Statistik Objek
                     vehicles = {VEHICLE_LABELS.get(k, k): v for k, v in stats.get("vehicles", {}).items()}
                     with stat_ph.container():
                         c1, c2, c3 = st.columns(3)
@@ -828,18 +824,12 @@ def page_realtime():
                         info_ph.markdown("📊 **Breakdown:** " + " | ".join(f"**{k}:** {v}" for k, v in vehicles.items()))
                 else:
                     frame_ph.info("Menghubungkan ke Live Edge. Menunggu frame pertama...")
-
-                # Rerun otomatis HANYA di dalam fungsi fragment ini (Sidebar & Player Kiri aman tidak hilang)
-                import time as _time
-                _time.sleep(refresh)
-                st.rerun()
             else:
                 if bridge.is_running:
                     bridge.stop()
-                frame_ph.info("Sistem AI dalam posisi Standby. Aktifkan toggle **Mulai Deteksi** di panel samping.")
+                frame_ph.info("Sistem AI dalam posisi Standby. Aktifkan toggle **Mulai Deteksi** di atas untuk memproses.")
 
-        # Panggil fungsi fragment gambar
-        render_ai_stream(run)
+        render_ai_stream()
 
     # ── BAGIAN BAWAH: Log Pelanggaran Terdeteksi Terkini (Database) ──
     st.markdown("---")
@@ -862,10 +852,10 @@ def page_realtime():
     else:
         st.info("Belum ada pelanggaran baru yang tercatat masuk ke database hari ini.")
 
-    # ── SECTION: Demo Detector (Upload) ──
+    # ── SECTION: Demo Detector (Fix Masalah Deteksi "Plant" Daun) ──
     st.markdown("---")
     st.subheader("🔍 Demo Detector — Upload Gambar / Video")
-    st.caption("Uji deteksi kendaraan & plat nomor menggunakan YOLO + EasyOCR")
+    st.caption("Uji deteksi kendaraan & plat nomor menggunakan YOLO + Crop ANPR")
 
     upload = st.file_uploader("Upload gambar atau video pendek", type=["jpg", "jpeg", "png", "mp4", "avi", "mov"])
     if upload is not None:
@@ -895,6 +885,35 @@ def page_realtime():
                         c3.metric("Lainnya", result["others"])
                     except Exception as e:
                         st.error(f"Detector error: {e}")
+
+            # ── PERBAIKAN: OCR Hanya Membaca Hasil Deteksi Bounding Box Kendaraan/Plat ──
+            st.markdown("**Deteksi Plat Nomor (EasyOCR - Crop Mode)**")
+            with st.spinner("Membaca plat nomor pada area kendaraan..."):
+                try:
+                    import easyocr
+                    reader = easyocr.Reader(["id"], gpu=False)
+                    
+                    # Cek apakah modul anpr.py milik Anda bisa dipakai secara modular
+                    try:
+                        from anpr import ANPRReader
+                        anpr_reader = ANPRReader()
+                        # Gunakan langsung fungsi ekstraksi dari anpr Anda agar format plat Indonesia-nya presisi
+                        extracted_plate = anpr_reader.read_plate(frame_rgb)
+                        if extracted_plate and extracted_plate != "UNKNOWN":
+                            st.success(f"Plat terdeteksi (ANPR Engine): **{extracted_plate}**")
+                        else:
+                            st.info("Tidak ada nomor plat valid terdeteksi pada area kendaraan.")
+                    except Exception:
+                        # Fallback jika model custom belum terikat sempurna: Baca teks kasar
+                        ocr_results = reader.readtext(frame_rgb)
+                        # Filter hanya string yang memiliki angka (ciri khas plat nomor Indonesia) agar tumbuhan tidak masuk
+                        plates = [text.upper() for (_, text, prob) in ocr_results if prob > 0.4 and any(c.isdigit() for c in text)]
+                        if plates:
+                            st.success("Plat terdeteksi: " + "  |  ".join(plates))
+                        else:
+                            st.info("Tidak ada plat nomor valid (mengandung angka) terdeteksi.")
+                except Exception as e:
+                    st.error(f"EasyOCR error: {e}")
  
 # ============================================================
 # PAGE 7 — SETTINGS
