@@ -1116,6 +1116,18 @@ class StreamlitDetectorBridge:
     _FRAME_TIMEOUT   = 30.0     # detik: timeout per frame read
     _STARTUP_TIMEOUT = 90.0     # detik: timeout total sebelum frame pertama
 
+def get_live_stream_url(youtube_url: str) -> str:
+    """Ambil URL stream langsung (m3u8) dari live edge, bukan dari awal."""
+    import yt_dlp
+    ydl_opts = {
+        "format": "best[ext=mp4]/best",
+        "quiet": True,
+        "live_from_start": False,  # ← KUNCI: jangan dari awal
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(youtube_url, download=False)
+        return info["url"]  # direct m3u8/mp4 URL
+  
     def __init__(self):
         self._thread     = None
         self._stop_event = threading.Event()
