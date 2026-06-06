@@ -1,8 +1,3 @@
-# ============================================================
-# dashboard.py — Streamlit Dashboard (7 Halaman)
-# DISHUB DKI Jakarta | AI Open Innovation Challenge 2026
-# ============================================================
-
 import time
 import streamlit as st
 import pandas as pd
