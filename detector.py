@@ -1,31 +1,3 @@
-# ============================================================
-# detector.py — Engine Deteksi OPTIMIZED (Low CPU/RAM)
-# DISHUB DKI Jakarta | AI Open Innovation Challenge 2026
-# ============================================================
-"""
-Perubahan vs versi original:
-  ★ FRAME RESIZE sebelum queue → hemat RAM signifikan
-  ★ QUEUE maxsize=2 → tidak timbun frame di memory
-  ★ INFERENCE HALF (float16) → 30-50% lebih cepat di GPU
-  ★ DISPLAY SCALE → window kecil, render lebih ringan
-  ★ GC MANUAL → hapus track lama tiap N frame
-  ★ DB write via background thread → inference tidak blocking
-  ★ ANPR async thread pool → tidak blocking main loop
-  ★ RAM GUARD: cap history posisi & jumlah track
-  ★ cv2.imshow non-blocking dengan waitKey(1)
-  ★ Model warmup → inference pertama tidak lag
-  ★ Headless mode (--no-display) untuk server/cloud
-
-  ★★ FIX LIVE STREAM (v2):
-     - get_youtube_stream_url kini pakai yt-dlp Python API
-       dengan live_from_start=False → ambil dari LIVE EDGE,
-       bukan dari awal rekaman (11 jam).
-     - StreamlitDetectorBridge menambah:
-         * skip ke live edge via cap.set(CAP_PROP_POS_MSEC)
-         * buffer size = 1 agar latency minimal
-         * reconnect otomatis jika stream putus
-         * timeout guard: stop jika >90 detik tanpa frame
-
 Usage:
     python detector.py                                    # Webcam + display
     python detector.py --source video.mp4                 # File video
