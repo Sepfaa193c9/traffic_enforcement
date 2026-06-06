@@ -797,7 +797,8 @@ def page_realtime():
             if not bridge.is_running:
                 status_ph.info("Menghubungkan ke stream...")
                 bridge.start(STREAM_URL, conf=conf)
-
+            while run and bride.is_running:
+            
             # Tampilkan error jika ada
             if bridge.error:
                 frame_ph.error(f"Error: {bridge.error}")
@@ -805,6 +806,8 @@ def page_realtime():
                     bridge.stop()
                     del st.session_state["detector_bridge"]
                     st.rerun()
+                break
+                  
             elif bridge.latest_frame is not None:
                 with bridge._lock:
                     frame  = bridge.latest_frame.copy()
@@ -832,8 +835,8 @@ def page_realtime():
                 frame_ph.info("Menunggu frame pertama... (5-15 detik)")
 
             # Auto-refresh UI
-            _time.sleep(refresh)
-            st.rerun()
+            _time.sleep(0.03)
+            
 
         else:
             # Stop bridge jika toggle dimatikan
