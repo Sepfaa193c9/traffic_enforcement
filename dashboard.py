@@ -887,7 +887,7 @@ def page_realtime():
             with st.spinner("Membaca plat nomor..."):
                 try:
                     import easyocr
-                    reader      = easyocr.Reader(["en"], gpu=False)
+                    reader      = easyocr.Reader(["id"], gpu=True)
                     ocr_results = reader.readtext(frame_rgb)
                     plates      = [text for (_, text, prob) in ocr_results if prob > 0.4]
                     if plates:
