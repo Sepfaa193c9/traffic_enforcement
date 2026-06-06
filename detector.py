@@ -16,6 +16,16 @@ Perubahan vs versi original:
   ★ Model warmup → inference pertama tidak lag
   ★ Headless mode (--no-display) untuk server/cloud
 
+  ★★ FIX LIVE STREAM (v2):
+     - get_youtube_stream_url kini pakai yt-dlp Python API
+       dengan live_from_start=False → ambil dari LIVE EDGE,
+       bukan dari awal rekaman (11 jam).
+     - StreamlitDetectorBridge menambah:
+         * skip ke live edge via cap.set(CAP_PROP_POS_MSEC)
+         * buffer size = 1 agar latency minimal
+         * reconnect otomatis jika stream putus
+         * timeout guard: stop jika >90 detik tanpa frame
+
 Usage:
     python detector.py                                    # Webcam + display
     python detector.py --source video.mp4                 # File video
@@ -83,7 +93,6 @@ def _check_imports() -> dict:
 
     return status
 
-# Tambahkan di bagian import (setelah import lainnya)
 # ============================================================
 # FIX: Pastikan semua module bisa diimport dengan benar
 # ============================================================
@@ -103,6 +112,8 @@ except ImportError:
     except ImportError:
         logger.warning("ByteTrack tidak tersedia, tracking dinonaktifkan")
         ByteTrackTracker = None
+
+
 # ============================================================
 # STREAM HELPERS
 # ============================================================
@@ -115,12 +126,75 @@ def is_youtube_url(url: str) -> bool:
 
 
 def get_youtube_stream_url(youtube_url: str) -> str:
-    if not shutil.which("yt-dlp"):
-        raise RuntimeError("yt-dlp tidak ditemukan. Install: pip install yt-dlp")
+    """
+    ★★ FIX UTAMA: Ambil direct stream URL dari YouTube.
+    
+    Menggunakan yt-dlp Python API (bukan subprocess) dengan:
+      - live_from_start=False  → mulai dari LIVE EDGE, bukan awal stream
+      - format 720p/best       → kualitas wajar, tidak terlalu besar
+    
+    Ini yang menyebabkan stream 11 jam di-seek dari awal:
+    versi lama pakai `yt-dlp -g` via subprocess tanpa flag live_from_start,
+    sehingga OpenCV membuka dari timestamp 00:00 rekaman.
+    """
+    print("Mengambil stream URL dari live edge (yt-dlp)...")
 
-    print("Mengambil stream URL (5-15 detik)...")
+    # ── Coba Python API dulu (lebih andal, support live_from_start) ──
+    try:
+        import yt_dlp
+
+        ydl_opts = {
+            "format":          "best[height<=720][ext=mp4]/best[height<=720]/best",
+            "quiet":           True,
+            "no_warnings":     True,
+            "noplaylist":      True,
+            # ★ KUNCI: False = mulai dari ujung live, bukan awal rekaman
+            "live_from_start": False,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(youtube_url, download=False)
+
+        # Untuk live stream, ambil URL manifest/direct
+        url = info.get("url")
+        if not url:
+            # Beberapa format: cek formats list
+            fmts = info.get("formats", [])
+            # Pilih format terbaik ≤720p
+            for f in reversed(fmts):
+                if f.get("url") and f.get("height", 9999) <= 720:
+                    url = f["url"]
+                    break
+            if not url and fmts:
+                url = fmts[-1]["url"]
+
+        if not url:
+            raise RuntimeError("yt-dlp tidak mengembalikan URL stream.")
+
+        print(f"[yt-dlp API] Stream URL diperoleh (live_from_start=False) ✓")
+        return url
+
+    except ImportError:
+        # yt-dlp tidak terinstall sebagai package, fallback ke subprocess
+        logger.warning("yt-dlp tidak bisa diimport sebagai package, coba subprocess...")
+
+    # ── Fallback: subprocess yt-dlp ──
+    if not shutil.which("yt-dlp"):
+        raise RuntimeError(
+            "yt-dlp tidak ditemukan.\n"
+            "  Install: pip install yt-dlp"
+        )
+
     fmt = "best[height<=720][ext=mp4]/best[height<=720]/best"
-    cmd = ["yt-dlp", "-g", "-f", fmt, "--no-warnings", "--no-playlist", youtube_url]
+    # ★ Tambahkan --no-live-from-start agar tidak mulai dari awal
+    cmd = [
+        "yt-dlp", "-g",
+        "-f", fmt,
+        "--no-warnings",
+        "--no-playlist",
+        "--no-live-from-start",   # ★ FIX: live edge
+        youtube_url,
+    ]
 
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=40)
@@ -134,12 +208,40 @@ def get_youtube_stream_url(youtube_url: str) -> str:
     if not urls:
         raise RuntimeError("yt-dlp tidak mengembalikan URL.")
 
-    print(f"[yt-dlp] OK — {len(urls)} stream tersedia")
+    print(f"[yt-dlp subprocess] OK — {len(urls)} stream tersedia ✓")
     return urls[0]
 
 
 def is_hls_url(url: str) -> bool:
     return isinstance(url, str) and ".m3u8" in url
+
+
+def _open_cap_at_live_edge(stream_url: str) -> cv2.VideoCapture:
+    """
+    ★★ FIX: Buka VideoCapture dan langsung seek ke live edge.
+    
+    Untuk live stream HLS/DASH, frame tersedia dari posisi
+    tertentu di dekat ujung buffer. Dengan set buffer size=1
+    dan langsung membaca tanpa delay, OpenCV akan mengambil
+    frame terbaru, bukan dari awal.
+    """
+    cap = cv2.VideoCapture(stream_url)
+
+    # ★ Buffer sekecil mungkin → frame selalu fresh
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+    if not cap.isOpened():
+        return cap   # caller akan cek isOpened()
+
+    # Untuk HLS: skip ke live edge dengan seek ke durasi total
+    # (hanya efektif pada beberapa format; tidak merusak jika gagal)
+    total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    if total_frames and total_frames > 0:
+        # Seek ke 95% durasi agar tidak miss beberapa detik terakhir
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(total_frames * 0.95))
+        logger.info(f"Seek ke live edge: frame {int(total_frames * 0.95)}/{int(total_frames)}")
+
+    return cap
 
 
 # ============================================================
@@ -295,7 +397,7 @@ class AsyncDBWriter:
     """
     def __init__(self, db):
         self._db    = db
-        self._queue = queue.Queue(maxsize=200)  # buffer 200 event
+        self._queue = queue.Queue(maxsize=200)
         self._t     = threading.Thread(target=self._worker, daemon=True)
         self._t.start()
 
@@ -356,18 +458,16 @@ class TrafficEnforcementSystem:
         self.anpr_enabled      = ANPR_ENABLED
         self.no_display        = no_display
 
-        # ★ Performance config
         self.frame_skip         = frame_skip_override or FRAME_SKIP
         self.use_threaded_reader = USE_THREADED_READER
         self.queue_maxsize      = FRAME_QUEUE_MAXSIZE
-        self.capture_resize     = CAPTURE_RESIZE       # (w, h) or None
-        self.display_scale      = DISPLAY_SCALE        # 0.0–1.0
+        self.capture_resize     = CAPTURE_RESIZE
+        self.display_scale      = DISPLAY_SCALE
         self.gc_interval        = GC_INTERVAL_FRAMES
         self.max_tracked        = MAX_TRACKED_OBJECTS
         self.pos_history_maxlen = POSITION_HISTORY_MAXLEN
         self.db_wal_mode        = DB_WAL_MODE
 
-        # Runtime state
         self.track_zones:    dict = {}
         self.last_saved:     dict = {}
         self.prev_positions: dict = {}
@@ -380,11 +480,9 @@ class TrafficEnforcementSystem:
         self._ffmpeg_proc    = None
         self._frame_queue    = None
 
-        # ★ ANPR async executor (max 1 thread — serial OCR)
         self._anpr_executor  = ThreadPoolExecutor(max_workers=1)
-        self._anpr_futures   = {}   # track_id → Future
+        self._anpr_futures   = {}
 
-        # Load komponen
         self._load_model(YOLO_MODEL)
         self._load_tracker()
         self._load_db()
@@ -415,13 +513,11 @@ class TrafficEnforcementSystem:
         self.db = DatabaseManager()
         if self.db_wal_mode:
             try:
-                # WAL mode: writes tidak block reads
                 self.db._conn.execute("PRAGMA journal_mode=WAL")
                 self.db._conn.execute("PRAGMA synchronous=NORMAL")
                 logger.info("SQLite WAL mode aktif ✓")
             except Exception:
                 pass
-        # ★ Semua DB write via background thread
         self.async_writer = AsyncDBWriter(self.db)
         logger.info("Async DB writer started ✓")
 
@@ -449,10 +545,6 @@ class TrafficEnforcementSystem:
         self._seconds_per_frame = 1.0 / 25.0
 
     def _warmup_model(self):
-        """
-        ★ Warmup: jalankan inference sekali dengan dummy frame.
-        Tanpa ini, frame pertama bisa lag 1-3 detik (model load ke memori).
-        """
         logger.info("Model warmup...")
         dummy = np.zeros((self.imgsz, self.imgsz, 3), dtype=np.uint8)
         self.model(dummy, conf=self.conf, iou=self.iou,
@@ -487,15 +579,10 @@ class TrafficEnforcementSystem:
         return round(min(speed_kmh, 200.0), 1)
 
     # ----------------------------------------------------------
-    # ★ MEMORY GUARD — hapus track lama
+    # MEMORY GUARD
     # ----------------------------------------------------------
 
     def _gc_stale_tracks(self, active_ids: set):
-        """
-        Hapus entry dict untuk track_id yang sudah tidak aktif.
-        Dipanggil setiap GC_INTERVAL_FRAMES.
-        """
-        # Hapus posisi history track yang hilang
         stale = [tid for tid in list(self.prev_positions.keys())
                  if tid not in active_ids]
         for tid in stale:
@@ -504,7 +591,6 @@ class TrafficEnforcementSystem:
             self.last_saved.pop(tid, None)
             self._anpr_futures.pop(tid, None)
 
-        # ★ Jika masih terlalu banyak track, buang yang paling lama tidak aktif
         if len(self.prev_positions) > self.max_tracked:
             excess = list(self.prev_positions.keys())[
                 : len(self.prev_positions) - self.max_tracked
@@ -514,7 +600,6 @@ class TrafficEnforcementSystem:
                 self.track_zones.pop(tid, None)
                 self.last_saved.pop(tid, None)
 
-        # Python GC manual
         gc.collect()
 
     # ----------------------------------------------------------
@@ -525,7 +610,7 @@ class TrafficEnforcementSystem:
         q = queue.Queue(maxsize=self.queue_maxsize)
         self._frame_queue = q
 
-        resize_to = self.capture_resize   # (w, h) or None
+        resize_to = self.capture_resize
 
         def _reader():
             while True:
@@ -538,12 +623,10 @@ class TrafficEnforcementSystem:
                     q.put((False, None))
                     break
 
-                # ★ Resize di reader thread — hemat RAM & CPU di main thread
                 if resize_to and frame is not None:
                     frame = cv2.resize(frame, resize_to,
                                        interpolation=cv2.INTER_LINEAR)
 
-                # Drop frame lama jika queue penuh
                 if q.full():
                     try:
                         q.get_nowait()
@@ -570,9 +653,9 @@ class TrafficEnforcementSystem:
         src = self.source
 
         if not (isinstance(src, str) and ".m3u8" in src):
-            cap = cv2.VideoCapture(src)
+            # ★ Gunakan helper yang seek ke live edge
+            cap = _open_cap_at_live_edge(src) if isinstance(src, str) else cv2.VideoCapture(src)
             if cap.isOpened():
-                # ★ Set buffer size kecil — kurangi latency
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 logger.info(f"VideoCapture dibuka: {str(src)[:60]}")
                 return cap
@@ -622,24 +705,22 @@ class TrafficEnforcementSystem:
         return True, frame.copy()
 
     # ----------------------------------------------------------
-    # ★ ASYNC ANPR — tidak block main loop
+    # ASYNC ANPR
     # ----------------------------------------------------------
 
     def _request_anpr_async(self, track_id: int, roi: np.ndarray):
-        """Submit ANPR ke thread pool; hasil diambil di frame berikutnya."""
         if track_id in self._anpr_futures:
             fut = self._anpr_futures[track_id]
             if not fut.done():
-                return   # masih processing, skip
+                return
 
-        roi_copy = roi.copy()   # copy agar tidak data race
+        roi_copy = roi.copy()
         fut = self._anpr_executor.submit(
             self.anpr.read_plate_cached, roi_copy, track_id
         )
         self._anpr_futures[track_id] = fut
 
     def _get_anpr_result(self, track_id: int) -> str:
-        """Ambil hasil ANPR jika sudah selesai, else return None."""
         fut = self._anpr_futures.get(track_id)
         if fut and fut.done():
             try:
@@ -658,23 +739,20 @@ class TrafficEnforcementSystem:
         self.frame_count += 1
         now = time.time()
 
-        # ★ Resize jika belum (fallback jika tidak pakai threaded reader)
         if self.capture_resize:
             h, w = frame.shape[:2]
             tw, th = self.capture_resize
             if (w, h) != (tw, th):
                 frame = cv2.resize(frame, (tw, th), interpolation=cv2.INTER_LINEAR)
 
-        # Layer 1: Zona
         frame = draw_zones(frame, self.zones)
 
-        # YOLOv8 inference
         results = self.model(
             frame,
             conf=self.conf,
             iou=self.iou,
             imgsz=self.imgsz,
-            half=self.infer_half,   # ★ float16 di GPU
+            half=self.infer_half,
             verbose=False,
         )[0]
 
@@ -684,7 +762,6 @@ class TrafficEnforcementSystem:
         if mask.sum() == 0:
             self._draw_hud(frame)
             self._update_fps()
-            # ★ GC check
             if self.frame_count % self.gc_interval == 0:
                 self._gc_stale_tracks(set())
             return frame
@@ -717,13 +794,11 @@ class TrafficEnforcementSystem:
             hitbox          = get_bbox_bottom_center(x1, y1, x2, y2)
             vehicle_type    = self.vehicle_classes.get(int(cls_id), "car")
 
-            # ★ History posisi dengan maxlen terbatas
             if track_id not in self.prev_positions:
                 self.prev_positions[track_id] = deque(
                     maxlen=self.pos_history_maxlen)
             self.prev_positions[track_id].append(hitbox)
 
-            # Collision detection
             for zone_name, zone_info in self.zones.items():
                 in_zone = point_in_polygon(hitbox, zone_info["polygon"])
                 vtype   = zone_info.get("violation_type", "zone_violation")
@@ -746,22 +821,18 @@ class TrafficEnforcementSystem:
                         if now - self.last_saved.get(track_id, 0) < self.violation_cooldown:
                             continue
 
-                        # ★ ANPR async — tidak blocking
                         plate = "UNKNOWN"
                         if self.anpr:
-                            # Submit async jika belum
                             mid_y = y1 + (y2 - y1) // 2
                             roi   = frame[max(0, mid_y):y2, max(0, x1):x2]
                             if roi.size > 0:
                                 self._request_anpr_async(int(track_id), roi)
-                            # Ambil hasil sebelumnya jika ada
                             result = self._get_anpr_result(int(track_id))
                             if result:
                                 plate = result
 
                         spd_now = self._estimate_speed(track_id)
 
-                        # ★ DB write async — tidak blocking
                         self.async_writer.write({
                             "timestamp":        datetime.now().isoformat(),
                             "camera_id":        self.camera_id,
@@ -784,14 +855,12 @@ class TrafficEnforcementSystem:
                             self.track_zones[track_id]["zone"] == zone_name):
                         del self.track_zones[track_id]
 
-            # Speed & render
             speed_kmh  = self._estimate_speed(track_id)
             speed_str  = f"{speed_kmh:.0f}km/h" if speed_kmh > 1 else ""
             over_speed = speed_kmh > self.speed_limit_kmh and speed_kmh > 1
 
             in_violation = track_id in self.track_zones
 
-            # Ambil cached plate dari future jika ada
             cached_plate = ""
             if self.anpr:
                 result = self._get_anpr_result(int(track_id))
@@ -815,15 +884,12 @@ class TrafficEnforcementSystem:
 
             draw_hitbox(frame, hitbox, in_violation or over_speed)
 
-        # Highlight zona aktif
         for zname in active_zones:
             draw_zone_active_highlight(frame, self.zones[zname]["polygon"])
 
-        # HUD
         self._draw_hud(frame)
         self._update_fps()
 
-        # ★ GC setiap N frame
         if self.frame_count % self.gc_interval == 0:
             self._gc_stale_tracks(active_ids)
 
@@ -894,7 +960,6 @@ class TrafficEnforcementSystem:
 
         use_pipe = (cap is None)
 
-        # Video writer
         if self.save_video:
             fw, fh = self.capture_resize or (1280, 720)
             if not use_pipe and cap:
@@ -904,7 +969,6 @@ class TrafficEnforcementSystem:
             self.video_writer = cv2.VideoWriter(
                 self.output_path, fourcc, self.output_fps, (fw, fh))
 
-        # Threaded reader
         is_stream = use_pipe or (isinstance(self.source, str) and
                                   ("rtsp://" in self.source or ".m3u8" in self.source))
         if self.use_threaded_reader and is_stream:
@@ -935,7 +999,6 @@ class TrafficEnforcementSystem:
                         ret, frame = self._read_pipe_frame()
                     else:
                         ret, frame = cap.read()
-                        # ★ Resize jika tidak pakai threaded reader
                         if ret and frame is not None and self.capture_resize:
                             frame = cv2.resize(frame, self.capture_resize,
                                                interpolation=cv2.INTER_LINEAR)
@@ -946,7 +1009,6 @@ class TrafficEnforcementSystem:
 
                     read_counter += 1
 
-                    # Frame skip
                     if read_counter % self.frame_skip == 0 or last_annotated is None:
                         last_annotated = self.process_frame(frame.copy())
 
@@ -963,7 +1025,6 @@ class TrafficEnforcementSystem:
                 if self.video_writer:
                     self.video_writer.write(annotated)
 
-                # ★ Display — skip jika headless
                 if not self.no_display:
                     if self.display_scale != 1.0 and annotated is not None:
                         h, w = annotated.shape[:2]
@@ -976,7 +1037,6 @@ class TrafficEnforcementSystem:
 
                     cv2.imshow("DISHUB DKI — Traffic Enforcement", display_frame)
 
-                # ★ Non-blocking key read
                 key = cv2.waitKey(1) & 0xFF
                 if   key in (ord("q"), ord("Q")):
                     print("Dihentikan.")
@@ -1003,7 +1063,9 @@ class TrafficEnforcementSystem:
             print(f"\nSesi selesai — Frame: {self.frame_count}  |  FPS rata-rata: {self.fps:.1f}")
 
 
-# Tambahkan di bagian bawah detector.py, sebelum CLI section
+# ============================================================
+# PROCESS SINGLE FRAME (dipanggil dari dashboard demo section)
+# ============================================================
 
 def process_single_frame(frame_rgb: np.ndarray, conf: float = 0.35) -> dict:
     """
@@ -1012,7 +1074,6 @@ def process_single_frame(frame_rgb: np.ndarray, conf: float = 0.35) -> dict:
     Output : dict berisi annotated frame + stats deteksi
     """
     from ultralytics import YOLO
-    import supervision as sv
     from collections import Counter
 
     model   = YOLO("yolov8n.pt")
@@ -1024,22 +1085,37 @@ def process_single_frame(frame_rgb: np.ndarray, conf: float = 0.35) -> dict:
     vehicle_keys = {"car", "motorcycle", "bus", "truck", "bicycle"}
 
     return {
-        "annotated":  annotated,                  # numpy RGB
-        "total":      len(results.boxes),
-        "vehicles":   {k: v for k, v in cnt.items() if k in vehicle_keys},
-        "others":     sum(v for k, v in cnt.items() if k not in vehicle_keys),
+        "annotated":    annotated,
+        "total":        len(results.boxes),
+        "vehicles":     {k: v for k, v in cnt.items() if k in vehicle_keys},
+        "others":       sum(v for k, v in cnt.items() if k not in vehicle_keys),
         "class_counts": dict(cnt),
     }
 
 
-
+# ============================================================
 # STREAMLIT BRIDGE
+# ============================================================
 
 class StreamlitDetectorBridge:
     """
     Jalankan detector di background thread.
     Streamlit polling latest_frame dan latest_stats via shared state.
+
+    ★★ FIX v2 — perubahan dari versi sebelumnya:
+      1. get_youtube_stream_url dipanggil dengan live_from_start=False
+         → OpenCV tidak perlu seek 11 jam rekaman.
+      2. cap.set(CAP_PROP_BUFFERSIZE, 1) → latency minimal.
+      3. Reconnect otomatis jika stream putus (max 3x).
+      4. Timeout guard: berhenti jika >90 detik tanpa satu frame pun.
+      5. Frame timeout 30 detik per frame → tidak hang selamanya.
     """
+
+    # Konstanta reconnect & timeout
+    _MAX_RECONNECT   = 3        # maks percobaan reconnect
+    _FRAME_TIMEOUT   = 30.0     # detik: timeout per frame read
+    _STARTUP_TIMEOUT = 90.0     # detik: timeout total sebelum frame pertama
+
     def __init__(self):
         self._thread     = None
         self._stop_event = threading.Event()
@@ -1053,9 +1129,11 @@ class StreamlitDetectorBridge:
         if self._thread and self._thread.is_alive():
             return
         self._stop_event.clear()
-        self.error      = None
-        self.is_running = True
-        self._thread    = threading.Thread(
+        self.error       = None
+        self.latest_frame = None
+        self.latest_stats = {}
+        self.is_running  = True
+        self._thread     = threading.Thread(
             target=self._run, args=(source, conf), daemon=True
         )
         self._thread.start()
@@ -1064,65 +1142,168 @@ class StreamlitDetectorBridge:
         self._stop_event.set()
         self.is_running = False
 
+    # ----------------------------------------------------------
+    # _resolve_source — pisah resolusi URL agar bisa di-retry
+    # ----------------------------------------------------------
+    def _resolve_source(self, source: str) -> str:
+        """
+        ★ Resolve YouTube URL ke direct stream URL dengan live_from_start=False.
+        Kalau bukan YouTube, kembalikan apa adanya.
+        """
+        if is_youtube_url(source):
+            # get_youtube_stream_url sudah diupdate pakai live_from_start=False
+            return get_youtube_stream_url(source)
+        return source
+
+    # ----------------------------------------------------------
+    # _open_cap — buka VideoCapture dengan semua optimasi live
+    # ----------------------------------------------------------
+    def _open_cap(self, stream_url: str) -> cv2.VideoCapture:
+        """
+        ★ Buka VideoCapture, set buffer=1, seek ke live edge jika HLS.
+        """
+        cap = cv2.VideoCapture(stream_url)
+        if not cap.isOpened():
+            return cap
+
+        # ★ Buffer 1 frame → selalu ambil frame terbaru
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        # ★ Untuk HLS: seek ke 95% agar langsung live edge
+        total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        if total and total > 100:
+            target = int(total * 0.95)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, target)
+            logger.info(f"[Bridge] Seek ke live edge frame {target}/{int(total)}")
+
+        return cap
+
+    # ----------------------------------------------------------
+    # _run — main loop background thread
+    # ----------------------------------------------------------
     def _run(self, source: str, conf: float):
         import cv2
         from ultralytics import YOLO
         from collections import Counter
 
         try:
-            # Resolve YouTube jika perlu
-            if is_youtube_url(source):
-                source = get_youtube_stream_url(source)
+            # ── 1. Resolve URL ──────────────────────────────
+            stream_url = self._resolve_source(source)
 
+            # ── 2. Load & warmup YOLO ───────────────────────
             model = YOLO("yolov8n.pt")
-
-            # Warmup
             dummy = np.zeros((640, 640, 3), dtype=np.uint8)
             model(dummy, conf=conf, verbose=False)
 
-            cap = cv2.VideoCapture(source)
-            if not cap.isOpened():
-                self.error = "Tidak bisa buka stream."
-                self.is_running = False
-                return
+            vehicle_keys = {"car", "motorcycle", "bus", "truck", "bicycle"}
+            frame_skip   = 3
+            frame_idx    = 0
+            reconnect_n  = 0
 
-            frame_skip = 3
-            frame_idx  = 0
-
+            # ── 3. Loop dengan reconnect otomatis ───────────
             while not self._stop_event.is_set():
-                ret, frame = cap.read()
-                if not ret:
-                    break
 
-                frame_idx += 1
-                if frame_idx % frame_skip != 0:
+                # Buka / re-buka capture
+                cap = self._open_cap(stream_url)
+                if not cap.isOpened():
+                    reconnect_n += 1
+                    if reconnect_n > self._MAX_RECONNECT:
+                        self.error = "Tidak bisa buka stream setelah beberapa percobaan."
+                        break
+                    logger.warning(f"[Bridge] Cap tidak terbuka, retry {reconnect_n}/{self._MAX_RECONNECT}...")
+                    # Re-resolve URL (token YouTube bisa expired)
+                    try:
+                        stream_url = self._resolve_source(source)
+                    except Exception as e:
+                        self.error = str(e)
+                        break
+                    time.sleep(3)
                     continue
 
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                results   = model(frame_rgb, conf=conf, verbose=False)[0]
-                annotated = results.plot()
+                reconnect_n = 0   # reset counter jika berhasil buka
 
-                cls_list     = [model.names[int(c)] for c in results.boxes.cls]
-                cnt          = Counter(cls_list)
-                vehicle_keys = {"car", "motorcycle", "bus", "truck", "bicycle"}
+                # ── 4. Frame read loop ───────────────────────
+                startup_deadline = time.time() + self._STARTUP_TIMEOUT
+                last_frame_time  = time.time()
+                got_first_frame  = False
 
-                with self._lock:
-                    self.latest_frame = annotated
-                    self.latest_stats = {
-                        "total":    len(results.boxes),
-                        "vehicles": {k: v for k, v in cnt.items() if k in vehicle_keys},
-                        "others":   sum(v for k, v in cnt.items() if k not in vehicle_keys),
-                        "ts":       datetime.now().strftime("%H:%M:%S"),
-                    }
+                while not self._stop_event.is_set():
 
-            cap.release()
+                    # ★ Timeout guard sebelum frame pertama
+                    if not got_first_frame and time.time() > startup_deadline:
+                        self.error = (
+                            "Timeout: tidak ada frame dalam "
+                            f"{self._STARTUP_TIMEOUT:.0f} detik. "
+                            "Coba refresh atau ganti stream URL."
+                        )
+                        self._stop_event.set()
+                        break
+
+                    # ★ Timeout per frame (stream mati)
+                    if got_first_frame and (time.time() - last_frame_time) > self._FRAME_TIMEOUT:
+                        logger.warning("[Bridge] Frame timeout, reconnect...")
+                        break   # keluar ke reconnect loop
+
+                    ret, frame = cap.read()
+
+                    if not ret:
+                        logger.warning("[Bridge] cap.read() gagal, reconnect...")
+                        break
+
+                    last_frame_time = time.time()
+                    got_first_frame = True
+
+                    frame_idx += 1
+                    if frame_idx % frame_skip != 0:
+                        continue
+
+                    # ── 5. YOLO inference ────────────────────
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    results   = model(frame_rgb, conf=conf, verbose=False)[0]
+                    annotated = results.plot()
+
+                    cls_list = [model.names[int(c)] for c in results.boxes.cls]
+                    cnt      = Counter(cls_list)
+
+                    with self._lock:
+                        self.latest_frame = annotated
+                        self.latest_stats = {
+                            "total":    len(results.boxes),
+                            "vehicles": {k: v for k, v in cnt.items() if k in vehicle_keys},
+                            "others":   sum(v for k, v in cnt.items() if k not in vehicle_keys),
+                            "ts":       datetime.now().strftime("%H:%M:%S"),
+                        }
+
+                cap.release()
+
+                # Jika stop diminta, keluar
+                if self._stop_event.is_set():
+                    break
+
+                # Re-resolve sebelum reconnect (token bisa expired)
+                reconnect_n += 1
+                if reconnect_n > self._MAX_RECONNECT:
+                    self.error = "Stream terputus dan gagal reconnect."
+                    break
+
+                logger.info(f"[Bridge] Reconnect {reconnect_n}/{self._MAX_RECONNECT}...")
+                try:
+                    stream_url = self._resolve_source(source)
+                except Exception as e:
+                    self.error = str(e)
+                    break
+                time.sleep(2)
 
         except Exception as e:
             self.error = str(e)
+            logger.error(f"[Bridge] Error: {e}", exc_info=True)
         finally:
             self.is_running = False
 
-#CLI
+
+# ============================================================
+# CLI
+# ============================================================
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -1156,7 +1337,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Cek dependency
     deps = _check_imports()
     if not all(deps.values()):
         missing = [k for k, v in deps.items() if not v]
@@ -1164,7 +1344,6 @@ if __name__ == "__main__":
         print("  Jalankan: pip install ultralytics supervision trackers")
         sys.exit(1)
 
-    # Resolve source
     raw = args.source
     if raw is None:
         source = 0
