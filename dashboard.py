@@ -860,7 +860,7 @@ def page_realtime():
 
     # ── Bagian Bawah: Log Pelanggaran Terdeteksi Terkini ───────────────────────
    
-if not df.empty:
+    if not df.empty:
     # Menentukan target kolom yang disesuaikan dengan skema database Anda
     target_cols = ['timestamp', 'plate', 'vtype_label', 'confidence']
     
