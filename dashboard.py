@@ -740,35 +740,33 @@ def page_realtime():
     st.header("🎥 Real-time Video Monitor (Live Edge)")
     st.markdown("Monitor siaran langsung kamera lalu lintas DISHUB dengan penanganan latensi rendah.")
 
-    # 1. Konfigurasi Parameter Deteksi di Sidebar atau bagian atas
+    # 1. Konfigurasi Parameter Deteksi di Sidebar
     with st.sidebar:
         st.subheader("⚙️ Real-time Config")
         conf = st.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05, key="rt_conf")
         refresh = st.slider("UI Refresh Rate (s)", 0.1, 2.0, 0.5, 0.1, key="rt_refresh")
+        # Toggle dipastikan berada di bagian paling atas alur eksekusi sidebar
         run = st.toggle("▶ Mulai Deteksi", value=False, key="rt_run")
 
-    # Ambil konfigurasi URL dan ID Video global (Pastikan variabel ini terdefinisi di config.py Anda)
-    # Jika tidak ada di config, Anda bisa melakukan fallback manual seperti di bawah ini:
+    # Fallback variabel default jika tidak ada config.py
     try:
-        from config import STREAM_URL, VIDEO_ID, VEHICLE_LABELS
+        from config import VEHICLE_LABELS
     except ImportError:
-        STREAM_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-        VIDEO_ID = "dQw4w9WgXcQ"
         VEHICLE_LABELS = {0: "Person", 2: "Car", 3: "Motorcycle", 5: "Bus", 7: "Truck"}
 
-    # Input dinamis untuk URL stream
-    live_url = st.text_input("URL Live Stream:", value=STREAM_URL)
+    # Mengunci URL langsung sesuai permintaan Anda (Input Text Box Dihapus)
+    live_url = "https://www.youtube.com/watch?v=AQd-p5hFtQo"
 
-    # 2. MEMBUAT LAYOUT KOLOM (Memperbaiki error variabel 'left' & 'right' yang tidak terbaca)
+    # 2. MEMBUAT LAYOUT KOLOM
     left, right = st.columns([1, 1])
 
-    # ── SISI KIRI: Embed Player Live dari Browser ────────────────────────────────
+    # ── SISI KIRI: Embed Player Live Langsung dari URL Baru ───────────────────
     with left:
         st.subheader("📺 Live Feed Player")
         
-        # Ekstrak VIDEO_ID jika user mengganti URL YouTube di input text box
-        current_video_id = VIDEO_ID
-        if "youtube.com/watch?v=" in live_url:
+        # Ekstrak VIDEO_ID secara otomatis dari URL keras (AQd-p5hFtQo)
+        current_video_id = "AQd-p5hFtQo"
+        if "v=" in live_url:
             current_video_id = live_url.split("v=")[1].split("&")[0]
         elif "youtu.be/" in live_url:
             current_video_id = live_url.split("youtu.be/")[1].split("?")[0]
@@ -781,9 +779,9 @@ def page_realtime():
                 allow="autoplay; encrypted-media; fullscreen"
                 allowfullscreen
                 style="border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
-             iframe>
+            </iframe>
             <p style="color:gray; font-size:0.82em; margin-top:8px;">
-                Jika video tidak muncul, coba refresh halaman. &nbsp;
+                Mengunci Live Stream: <b>{current_video_id}</b> &nbsp;
                 <a href="{live_url}" target="_blank" style="color:#2d6a9f; text-decoration:none; font-weight:bold;">
                     Buka di Tab Baru →
                 </a>
@@ -800,64 +798,90 @@ def page_realtime():
         info_ph  = st.empty()
         status_ph = st.empty()
 
-        # Inisialisasi bridge di session_state agar berjalan secara persistent di background thread
+        # Inisialisasi bridge di session_state agar persisten
         if "detector_bridge" not in st.session_state:
-            from detector import StreamlitDetectorBridge
-            st.session_state.detector_bridge = StreamlitDetectorBridge()
+            try:
+                from detector import StreamlitDetectorBridge
+                st.session_state.detector_bridge = StreamlitDetectorBridge()
+            except ImportError:
+                st.error("Gagal memuat modul 'detector'. Pastikan file detector.py ada di folder yang sama.")
 
-        bridge = st.session_state.detector_bridge
+        if "detector_bridge" in st.session_state:
+            bridge = st.session_state.detector_bridge
 
-        if run:
-            # Jalankan background thread detektor jika belum menyala
-            if not bridge.is_running:
-                status_ph.info("Menghubungkan AI Engine ke Live Edge...")
-                bridge.start(live_url, conf=conf)
+            if run:
+                # Jalankan background thread detektor jika belum menyala
+                if not bridge.is_running:
+                    status_ph.info("Menghubungkan AI Engine ke Live Edge...")
+                    bridge.start(live_url, conf=conf)
 
-            # Penanganan jika terjadi kendala stream pada detector.py
-            if bridge.error:
-                frame_ph.error(f"Error Deteksi: {bridge.error}")
-                if st.button("🔄 Reset & Coba Lagi", key="retry_btn"):
-                    bridge.stop()
-                    if "detector_bridge" in st.session_state:
-                        del st.session_state["detector_bridge"]
-                    st.rerun()
-            
-            # Jika frame terbaru dari ujung live stream berhasil ditangkap
-            elif bridge.latest_frame is not None:
-                with bridge._lock:
-                    frame = bridge.latest_frame.copy()
-                    stats = bridge.latest_stats.copy()
+                # Penanganan kendala stream
+                if bridge.error:
+                    frame_ph.error(f"Error Deteksi: {bridge.error}")
+                    if st.button("🔄 Reset & Coba Lagi", key="retry_btn"):
+                        bridge.stop()
+                        if "detector_bridge" in st.session_state:
+                            del st.session_state["detector_bridge"]
+                        st.rerun()
+                
+                # Jika frame terbaru berhasil ditangkap oleh backend
+                elif bridge.latest_frame is not None:
+                    with bridge._lock:
+                        frame = bridge.latest_frame.copy()
+                        stats = bridge.latest_stats.copy()
 
-                # Tampilkan visualisasi frame berkotak (Bbox) hasil inferensi YOLO
-                frame_ph.image(frame, channels="RGB", use_container_width=True,
-                               caption=f"AI Monitor Live Edge | Sinkronisasi: {stats.get('ts', '')}")
+                    # Tampilkan frame hasil inferensi YOLO
+                    frame_ph.image(frame, channels="RGB", use_container_width=True,
+                                   caption=f"AI Monitor Live Edge | Sinkronisasi: {stats.get('ts', '')}")
 
-                # Format data statistik counter kendaraan
-                vehicles = {VEHICLE_LABELS.get(k, k): v for k, v in stats.get("vehicles", {}).items()}
+                    # Format data statistik counter kendaraan
+                    vehicles = {VEHICLE_LABELS.get(k, k): v for k, v in stats.get("vehicles", {}).items()}
 
-                with stat_ph.container():
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Total Objek", stats.get("total", 0))
-                    c2.metric("Kendaraan", sum(vehicles.values()))
-                    c3.metric("Objek Lain", stats.get("others", 0))
+                    with stat_ph.container():
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("Total Objek", stats.get("total", 0))
+                        c2.metric("Kendaraan", sum(vehicles.values()))
+                        c3.metric("Objek Lain", stats.get("others", 0))
 
-                if vehicles:
-                    info_ph.markdown("📊 **Breakdown:** " + " | ".join(f"**{k}:** {v}" for k, v in vehicles.items()))
-                status_ph.empty()
+                    if vehicles:
+                        info_ph.markdown("📊 **Breakdown:** " + " | ".join(f"**{k}:** {v}" for k, v in vehicles.items()))
+                    status_ph.empty()
+                else:
+                    frame_ph.info("Menghubungkan ke Live Edge. Menunggu frame pertama... (5-15 detik)")
+
+                # Meletakkan delay & rerun di akhir scope agar tidak memotong rendering sidebar/toggle
+                import time as _time
+                _time.sleep(refresh)
+                st.rerun()
+
             else:
-                frame_ph.info("Menghubungkan ke Live Edge. Menunggu frame pertama... (5-15 detik)")
+                # Jika toggle dimatikan, matikan thread background agar hemat RAM
+                if bridge.is_running:
+                    bridge.stop()
+                frame_ph.info("Sistem AI dalam posisi Standby. Aktifkan toggle **Mulai Deteksi** di panel samping untuk memproses.")
 
-            # Auto-refresh halaman dashboard agar UI terus memperbarui frame dari background thread
-            import time as _time
-            _time.sleep(refresh)
-            st.rerun()
+    # ── Bagian Bawah: Log Pelanggaran Terdeteksi Terkini (Aman dari KeyError) ──
+    st.markdown("---")
+    st.markdown("#### 🚨 Log Pelanggaran Lalu Lintas Terkini (Database)")
+    
+    df = load_data(days_back=1)
+    if not df.empty:
+        # Memastikan aplikasi tidak crash (KeyError) menggunakan pengecekan nama kolom dinamis
+        target_cols = ['timestamp', 'plate', 'vtype_label', 'confidence']
+        available_cols = [col for col in target_cols if col in df.columns]
+        
+        # Fallback alternatif jika skema database lama Anda masih tersisa
+        if 'plate' not in df.columns and 'plate_number' in df.columns:
+            available_cols.append('plate_number')
+        if 'vtype_label' not in df.columns and 'violation_type' in df.columns:
+            available_cols.append('violation_type')
 
+        if available_cols:
+            st.dataframe(df[available_cols].head(5), use_container_width=True)
         else:
-            # Jika toggle dimatikan, matikan thread background agar menghemat CPU/RAM server
-            if bridge.is_running:
-                bridge.stop()
-            frame_ph.info("Sistem AI dalam posisi Standby. Aktifkan toggle **Mulai Deteksi** di panel samping untuk memproses.")
-
+            st.dataframe(df.head(5), use_container_width=True)
+    else:
+        st.info("Belum ada pelanggaran baru yang tercatat masuk ke database hari ini.")
 
     # ── Section: Demo Detector ─────────────────────────────
     st.markdown("---")
@@ -870,10 +894,9 @@ def page_realtime():
     if upload is not None:
         import numpy as np
         from PIL import Image
-        import io
 
         if upload.type.startswith("image"):
-            img       = Image.open(upload).convert("RGB")
+            img = Image.open(upload).convert("RGB")
             frame_rgb = np.array(img)
 
             col_ori, col_det = st.columns(2)
@@ -885,19 +908,14 @@ def page_realtime():
                 with st.spinner("Menjalankan detector..."):
                     try:
                         from detector import process_single_frame
-                        result   = process_single_frame(frame_rgb, conf=conf)
-                        vehicles = {VEHICLE_LABELS.get(k, k): v
-                                    for k, v in result["vehicles"].items()}
-                        st.image(result["annotated"], channels="RGB",
-                                 use_container_width=True)
+                        result = process_single_frame(frame_rgb, conf=conf)
+                        v_det = {VEHICLE_LABELS.get(k, k): v for k, v in result["vehicles"].items()}
+                        st.image(result["annotated"], channels="RGB", use_container_width=True)
+                        
                         c1, c2, c3 = st.columns(3)
                         c1.metric("Terdeteksi", result["total"])
-                        c2.metric("Kendaraan",  sum(vehicles.values()))
+                        c2.metric("Kendaraan",  sum(v_det.values()))
                         c3.metric("Lainnya",    result["others"])
-                        if vehicles:
-                            st.markdown("  ".join(
-                                f"**{k}** {v}" for k, v in vehicles.items()
-                            ))
                     except Exception as e:
                         st.error(f"Detector error: {e}")
 
@@ -905,9 +923,9 @@ def page_realtime():
             with st.spinner("Membaca plat nomor..."):
                 try:
                     import easyocr
-                    reader      = easyocr.Reader(["id"], gpu=True)
+                    reader = easyocr.Reader(["id"], gpu=False) # Diubah ke False jika dijalankan di CPU lokal/server tanpa CUDA ganda
                     ocr_results = reader.readtext(frame_rgb)
-                    plates      = [text for (_, text, prob) in ocr_results if prob > 0.4]
+                    plates = [text for (_, text, prob) in ocr_results if prob > 0.4]
                     if plates:
                         st.success("Plat terdeteksi: " + "  |  ".join(plates))
                     else:
@@ -926,12 +944,12 @@ def page_realtime():
 
             if st.button("Jalankan Deteksi Video", type="primary"):
                 from detector import process_single_frame
-                cap       = cv2.VideoCapture(tmp_path)
-                total     = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                step      = max(1, total // max_frames)
-                progress  = st.progress(0)
-                cols      = st.columns(3)
-                col_idx   = 0
+                cap = cv2.VideoCapture(tmp_path)
+                total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                step = max(1, total // max_frames)
+                progress = st.progress(0)
+                cols = st.columns(3)
+                col_idx = 0
                 frame_idx = 0
 
                 while cap.isOpened():
@@ -940,7 +958,7 @@ def page_realtime():
                         break
                     if frame_idx % step == 0:
                         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        result    = process_single_frame(frame_rgb, conf=conf)
+                        result = process_single_frame(frame_rgb, conf=conf)
                         with cols[col_idx % 3]:
                             st.image(result["annotated"], channels="RGB",
                                      caption=f"Frame {frame_idx}",
