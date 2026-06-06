@@ -51,6 +51,17 @@ line_zone.trigger(detections)
 # Gambar garis dan angka perhitungan pada frame
 line_annotator = sv.LineZoneAnnotator(thickness=4, text_thickness=2, text_scale=1)
 annotated_frame = line_annotator.annotate(frame=annotated_frame, line_counter=line_zone)
+
+# Contoh logika jika mendeteksi mobil di jalur busway / parkir ilegal:
+if pelanggaran_terdeteksi:
+    db = DatabaseManager()
+    db.insert_violation(
+        camera_id="CAM_LIVE_YT",
+        vehicle_type=class_name,        # mobil/motor
+        license_plate=plat_nomor,       # dari EasyOCR atau "UNKNOWN" jika blur
+        violation_type="busway_violation", 
+        duration_seconds=duration
+    )
 # ============================================================
 # DEPENDENCY CHECK
 # ============================================================
