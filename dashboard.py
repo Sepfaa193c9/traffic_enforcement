@@ -859,6 +859,25 @@ def page_realtime():
             frame_ph.info("Sistem AI dalam posisi Standby. Aktifkan toggle **Mulai Deteksi** di panel samping untuk memproses.")
 
     # ── Bagian Bawah: Log Pelanggaran Terdeteksi Terkini ───────────────────────
+   
+if not df.empty:
+    # Menentukan target kolom yang disesuaikan dengan skema database Anda
+    target_cols = ['timestamp', 'plate', 'vtype_label', 'confidence']
+    
+    # Membuat filter dinamis agar hanya mengambil kolom yang benar-benar ada di DataFrame
+    available_cols = [col for col in target_cols if col in df.columns]
+    
+    # Fallback alternatif jika sistem Anda masih memakai nama kolom mentah (raw)
+    if 'plate' not in df.columns and 'plate_number' in df.columns:
+        available_cols.append('plate_number')
+    if 'vtype_label' not in df.columns and 'violation_type' in df.columns:
+        available_cols.append('violation_type')
+        
+    # Urutkan atau fallback total ke seluruh DataFrame jika kolom utama tidak ditemukan
+    if available_cols:
+        st.dataframe(df[available_cols].head(5), use_container_width=True)
+    else:
+        st.dataframe(df.head(5), use_container_width=True)
     st.markdown("---")
     st.markdown("#### 🚨 Log Pelanggaran Lalu Lintas Terkini (Database)")
     
