@@ -130,9 +130,9 @@ st.markdown("""
         text-align: center;
         cursor: pointer;
         transition: all 0.3s ease;
-        border: 2px solid rgba(0,176,255);
+        border: 2px solid rgba(0,176,255,1);
         color: blue;
-        background: rgba(0,176,255);
+        background: rgba(0,176,255,1);
         text-decoration: none;
     }
 
