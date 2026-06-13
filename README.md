@@ -1,22 +1,21 @@
-# 🚦 DISHUB DKI Jakarta - Intelligent Traffic Enforcement System
+# DISHUB DKI Jakarta - Intelligent Traffic Enforcement System
 
-Sistem otomatis untuk deteksi, tracking, dan analisis pelanggaran lalu lintas menggunakan **AI dan Computer Vision**. Semua tools gratis dan open-source!
+Sistem otomatis untuk deteksi, tracking, dan analisis pelanggaran lalu lintas menggunakan **AI dan Computer Vision**.
+## Fitur Utama
 
-## 📋 Fitur Utama
-
-✅ **Real-time Detection** — Deteksi pelanggaran via CCTV menggunakan YOLOv8  
-✅ **ANPR (License Plate Reading)** — Baca plat nomor otomatis dengan EasyOCR  
-✅ **Multi-Object Tracking** — Track kendaraan dengan ByteTrack untuk hitung durasi  
-✅ **Zone Detection** — Deteksi masuk jalur busway, jalur sepeda, atau parkir liar  
-✅ **Spatial-Temporal Heatmap** — Visualisasi hotspot pelanggaran di peta Jakarta  
-✅ **E-TLE Integration** — Database pelanggaran untuk electronic ticketing  
-✅ **Analytics Dashboard** — Streamlit dashboard dengan 7 halaman analitik  
-✅ **Excel Report Generator** — Laporan resmi multi-sheet siap cetak  
-✅ **100% Free** — YOLOv8, OpenCV, SQLite, Streamlit, Plotly, Folium semua gratis
+**Real-time Detection** — Deteksi pelanggaran via CCTV menggunakan YOLOv8  
+**ANPR (License Plate Reading)** — Baca plat nomor otomatis dengan EasyOCR  
+**Multi-Object Tracking** — Track kendaraan dengan ByteTrack untuk hitung durasi  
+**Zone Detection** — Deteksi masuk jalur busway, jalur sepeda, atau parkir liar  
+**Spatial-Temporal Heatmap** — Visualisasi hotspot pelanggaran di peta Jakarta  
+**E-TLE Integration** — Database pelanggaran untuk electronic ticketing  
+**Analytics Dashboard** — Streamlit dashboard dengan 7 halaman analitik  
+**Excel Report Generator** — Laporan resmi multi-sheet siap cetak  
+YOLOv8, OpenCV, SQLite, Streamlit, Plotly, Folium semua gratis
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Komponen | Technology | Status |
 |----------|-----------|--------|
@@ -33,7 +32,7 @@ Sistem otomatis untuk deteksi, tracking, dan analisis pelanggaran lalu lintas me
 
 ---
 
-## 📦 Instalasi
+## Instalasi
 
 ### 1. Clone Repository & Setup Virtual Environment
 
@@ -68,7 +67,7 @@ Estimasi waktu: 5-10 menit (tergantung koneksi internet)
 
 ---
 
-## ⚡ Quickstart (5 Menit)
+## Quickstart (5 Menit)
 
 ### A. Generate Data Demo & Jalankan Dashboard
 
@@ -82,7 +81,7 @@ streamlit run dashboard.py
 
 Dashboard akan buka di `http://localhost:8501`
 
-✅ Selesai! Sekarang kamu punya dashboard dengan data testing.
+Selesai! Sekarang kamu punya dashboard dengan data testing.
 
 ### B. Jalankan Deteksi Real-time (dari webcam)
 
@@ -106,7 +105,7 @@ Laporan akan tersimpan sebagai `Laporan_DISHUB_YYYYMMDD.xlsx`
 
 ---
 
-## 🎮 Panduan Penggunaan Lengkap
+## Panduan Penggunaan Lengkap
 
 ### Setup Zona Deteksi (Konfigurasi Awal)
 
