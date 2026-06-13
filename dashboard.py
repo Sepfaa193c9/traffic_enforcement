@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import sqlite3
 import os
 import sys
+from typing import Tuple
 
 # Tambahkan direktori saat ini ke path
 sys.path.insert(0, os.path.dirname(__file__))
@@ -205,7 +206,7 @@ def empty_state(msg: str = "Belum ada data. Jalankan `generate_demo_data.py` ter
 # NAVBAR HORIZONTAL
 # ============================================================
 
-def render_navbar() -> tuple[str, int]:
+def render_navbar() -> Tuple[str, int]:
     """Render horizontal navbar with navigation and controls"""
     st.markdown("""
     <div class="navbar-container" style="padding: 20px 30px; margin-bottom: 20px;">
@@ -790,8 +791,6 @@ def page_realtime():
 
         bridge = st.session_state.detector_bridge
 
-    
-
         if run:
             # Start jika belum jalan
             if not bridge.is_running:
@@ -806,8 +805,8 @@ def page_realtime():
                     if st.button("🔄 Coba Lagi", key="retry_btn"):
                         bridge.stop()
                         del st.session_state["detector_bridge"]
-                        st.rerun() # rerun di sini boleh karena ini kondisi reset error
-                    break # Keluar dari loop
+                        st.rerun()
+                    break
 
                 elif bridge.latest_frame is not None:
                     # Ambil frame dengan aman dari thread
@@ -914,8 +913,8 @@ def page_realtime():
             if st.button("Jalankan Deteksi Video", type="primary"):
                 from detector import process_single_frame
                 
-                # 1. Inisialisasi EasyOCR di luar loop agar pemrosesan video tidak lambat
-                with st.spinner("Menyiapkan AI pendeteksi plat..."):
+                # Inisialisasi EasyOCR di luar loop agar pemrosesan video tidak lambat
+                with st.spinner("Menyiapkan pendeteksi plat..."):
                     import easyocr
                     reader = easyocr.Reader(["id"], gpu=True)
 
@@ -927,7 +926,7 @@ def page_realtime():
                 col_idx   = 0
                 frame_idx = 0
                 
-                # 2. Siapkan wadah (Set) untuk menampung plat unik agar tidak banyak duplikat
+                # Siapkan wadah (Set) untuk menampung plat unik agar tidak banyak duplikat
                 all_detected_plates = set()
 
                 while cap.isOpened():
@@ -938,10 +937,10 @@ def page_realtime():
                     if frame_idx % step == 0:
                         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                         
-                        # --- Deteksi Kendaraan (YOLO) ---
+                        # Deteksi Kendaraan (YOLO)
                         result = process_single_frame(frame_rgb, conf=conf)
                         
-                        # --- Deteksi Plat Nomor (EasyOCR) ---
+                        # Deteksi Plat Nomor (EasyOCR)
                         ocr_results = reader.readtext(frame_rgb)
                         frame_plates = [text for (_, text, prob) in ocr_results if prob > 0.4]
                         
@@ -965,7 +964,6 @@ def page_realtime():
 
                 cap.release()
                 
-                # 3. Tampilkan hasil akhir semua plat yang tertangkap di dalam video
                 st.markdown("---")
                 st.markdown("**Hasil Rekap Deteksi Plat Nomor (Video):**")
                 if all_detected_plates:
@@ -1078,4 +1076,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
