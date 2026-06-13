@@ -35,7 +35,7 @@ def _init_database():
             print("[*] Database kosong, insert sample data...")
             from generate_demo_data import generate_demo_data
             generate_demo_data(count=300, days_back=30)
-            print("Sample data inserted")
+            print("[✓] Sample data inserted")
             return True
         except Exception as e:
             print(f"[!] Error insert sample data: {e}")
@@ -82,6 +82,7 @@ st.markdown("""
     .badge-bike     { background: #00c85322; color: #00c853; }
     .badge-wrong    { background: #9c27b022; color: #9c27b0; }
 
+    /* NAVBAR HORIZONTAL */
     .navbar-container {
         background: linear-gradient(90deg, #1e3a5f 0%, #2d6a9f 100%);
         border-radius: 12px;
@@ -736,7 +737,7 @@ def page_realtime():
     STREAM_URL = "https://www.youtube.com/live/AQd-p5hFtQo?si=IbHHVTbrYjplSOer"
     VIDEO_ID   = "AQd-p5hFtQo"
 
-    st.title("Real-time Monitor")
+    st.title("📱 Real-time Monitor")
 
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
@@ -754,7 +755,7 @@ def page_realtime():
 
     # ── Kiri: embed YouTube ────────────────────────────────
     with left:
-        st.subheader("Live Feed")
+        st.subheader("📺 Live Feed")
         embed_html = f"""
         <div>
             <iframe width="100%" height="315"
@@ -776,7 +777,7 @@ def page_realtime():
 
     # ── Kanan: hasil deteksi YOLO ──────────────────────────
     with right:
-        st.subheader("Hasil Deteksi YOLO")
+        st.subheader("🤖 Hasil Deteksi YOLO")
         frame_ph = st.empty()
         stat_ph  = st.empty()
         info_ph  = st.empty()
@@ -848,7 +849,7 @@ def page_realtime():
             frame_ph.info("Aktifkan toggle ▶ Mulai Deteksi untuk memulai.")
     # ── Section: Demo Detector ─────────────────────────────
     st.markdown("---")
-    st.subheader("Demo Detector")
+    st.subheader("🔍 Demo Detector — Upload Gambar / Video")
     st.caption("Uji deteksi kendaraan & plat nomor menggunakan YOLO + EasyOCR")
 
     upload = st.file_uploader("Upload gambar atau video pendek",
@@ -892,7 +893,7 @@ def page_realtime():
             with st.spinner("Membaca plat nomor..."):
                 try:
                     import easyocr
-                    reader      = easyocr.Reader(["id"], gpu=False)
+                    reader      = easyocr.Reader(["id"], gpu=True)
                     ocr_results = reader.readtext(frame_rgb)
                     plates      = [text for (_, text, prob) in ocr_results if prob > 0.4]
                     if plates:
@@ -913,12 +914,6 @@ def page_realtime():
 
             if st.button("Jalankan Deteksi Video", type="primary"):
                 from detector import process_single_frame
-                
-                # 1. Inisialisasi EasyOCR di luar loop agar pemrosesan video tidak lambat
-                with st.spinner("Menyiapkan AI pendeteksi plat..."):
-                    import easyocr
-                    reader = easyocr.Reader(["id"], gpu=True)
-
                 cap       = cv2.VideoCapture(tmp_path)
                 total     = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 step      = max(1, total // max_frames)
@@ -926,52 +921,23 @@ def page_realtime():
                 cols      = st.columns(3)
                 col_idx   = 0
                 frame_idx = 0
-                
-                # 2. Siapkan wadah (Set) untuk menampung plat unik agar tidak banyak duplikat
-                all_detected_plates = set()
 
                 while cap.isOpened():
                     ret, frame = cap.read()
                     if not ret:
                         break
-                        
                     if frame_idx % step == 0:
                         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        
-                        # --- Deteksi Kendaraan (YOLO) ---
-                        result = process_single_frame(frame_rgb, conf=conf)
-                        
-                        # --- Deteksi Plat Nomor (EasyOCR) ---
-                        ocr_results = reader.readtext(frame_rgb)
-                        frame_plates = [text for (_, text, prob) in ocr_results if prob > 0.4]
-                        
-                        # Simpan hasil plat dari frame ini ke daftar keseluruhan
-                        for p in frame_plates:
-                            all_detected_plates.add(p)
-                            
-                        # Buat caption gambar
-                        caption_text = f"Frame {frame_idx}"
-                        if frame_plates:
-                            caption_text += f" | Plat: {', '.join(frame_plates)}"
-                            
+                        result    = process_single_frame(frame_rgb, conf=conf)
                         with cols[col_idx % 3]:
                             st.image(result["annotated"], channels="RGB",
-                                     caption=caption_text,
+                                     caption=f"Frame {frame_idx}",
                                      use_container_width=True)
                         col_idx += 1
-                        
                     frame_idx += 1
                     progress.progress(min(frame_idx / total, 1.0))
 
                 cap.release()
-                
-                # 3. Tampilkan hasil akhir semua plat yang tertangkap di dalam video
-                st.markdown("---")
-                st.markdown("**Hasil Rekap Deteksi Plat Nomor (Video):**")
-                if all_detected_plates:
-                    st.success("Plat terdeteksi: " + "  |  ".join(all_detected_plates))
-                else:
-                    st.info("Tidak ada plat terdeteksi di sepanjang frame yang diproses.")
  
 # ============================================================
 # PAGE 7 — SETTINGS
@@ -1078,5 +1044,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
