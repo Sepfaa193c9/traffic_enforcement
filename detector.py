@@ -68,20 +68,6 @@ def _check_imports() -> dict:
 
     return status
 
-
-from weather_preprocessing import get_weather_preprocessing
-
-preprocessing = get_weather_preprocesing()
-
-ret, frame = cap.read()
-
-processed_frame = preprocessor.process(frame, conditional='auto')
-
-results = model(processed_frame)
-# ============================================================
-# FIX: Pastikan semua module bisa diimport dengan benar
-# ============================================================
-
 # Fix for trackers import
 try:
     from trackers import ByteTrackTracker
