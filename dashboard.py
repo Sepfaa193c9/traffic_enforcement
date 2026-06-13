@@ -230,7 +230,6 @@ def render_navbar() -> Tuple[str, int]:
         "E-TLE Integration",
         "Reports",
         "Heatmap",
-        "Real-time Monitor",
         "Settings",
     ]
     
@@ -471,7 +470,7 @@ def page_analytics(df: pd.DataFrame, days_back: int):
                 offenders.head(15),
                 x="license_plate", y="count",
                 color="risk_level",
-                color_discrete_map={"Tinggi": "#ff4b4b", "Sedang": "#ffa500", "Rendah": "#ffd700"},
+                color_discrete_map={"🔴 Tinggi": "#ff4b4b", "🟠 Sedang": "#ffa500", "🟡 Rendah": "#ffd700"},
                 text="count",
                 labels={"license_plate": "Plat Nomor", "count": "Jumlah Pelanggaran"},
             )
@@ -663,14 +662,6 @@ def page_heatmap(df: pd.DataFrame):
             icon=folium.Icon(color=color, icon="camera", prefix="fa"),
         ).add_to(m)
 
-    # Heat layer jika ada data dengan koordinat
-    if not df.empty and "latitude" in df.columns:
-        heat_df = df.dropna(subset=["latitude", "longitude"])
-        if not heat_df.empty:
-            from folium.plugins import HeatMap
-            heat_data = heat_df[["latitude", "longitude"]].values.tolist()
-            HeatMap(heat_data, radius=25, blur=15, min_opacity=0.3).add_to(m)
-
     col1, col2 = st.columns([3, 1])
     with col1:
         st_folium(m, width="100%", height=500)
@@ -692,308 +683,7 @@ def page_heatmap(df: pd.DataFrame):
                 st.markdown(f"**{row['nama']}** - {row['count']} pelanggaran")
 
 # ============================================================
-# PAGE 6 — REAL-TIME MONITOR
-# ============================================================
-@st.cache_resource
-def _load_yolo_model():
-    from ultralytics import YOLO
-    return YOLO("yolov8n.pt")
-
-
-def _grab_frame_mjpeg(stream_url: str):
-    import subprocess, shutil, io
-    import numpy as np
-    from PIL import Image
-
-    if not shutil.which("ffmpeg"):
-        return None, "ffmpeg tidak ditemukan"
-
-    try:
-        res = subprocess.run(
-            ["ffmpeg", "-loglevel", "error",
-             "-reconnect", "1",
-             "-reconnect_streamed", "1",
-             "-reconnect_delay_max", "5",
-             "-ss", "00:00:01",
-             "-i", stream_url,
-             "-frames:v", "1",
-             "-q:v", "2",
-             "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
-            capture_output=True, timeout=45,
-        )
-        if not res.stdout:
-            stderr = res.stderr.decode(errors="ignore")
-            return None, f"ffmpeg error: {stderr[-200:]}"
-        img = Image.open(io.BytesIO(res.stdout)).convert("RGB")
-        return np.array(img), None
-    except subprocess.TimeoutExpired:
-        return None, "Timeout saat ambil frame"
-    except Exception as e:
-        return None, str(e)
-
-
-def page_realtime():
-    import time as _time
-
-    STREAM_URL = "https://www.youtube.com/live/AQd-p5hFtQo?si=IbHHVTbrYjplSOer"
-    VIDEO_ID   = "AQd-p5hFtQo"
-
-    st.title("Real-time Monitor")
-
-    col1, col2, col3 = st.columns([2, 1, 1])
-    with col1:
-        conf = st.slider("Confidence", 0.1, 0.9, 0.35, 0.05)
-    with col2:
-        refresh = st.selectbox("Refresh UI tiap", [1, 2, 3, 5], index=1,
-                               format_func=lambda x: f"{x}s")
-    with col3:
-        st.markdown("<br>", unsafe_allow_html=True)
-        run = st.toggle("▶ Mulai Deteksi")
-
-    st.markdown("---")
-
-    left, right = st.columns([1, 1])
-
-    # ── Kiri: embed YouTube ────────────────────────────────
-    with left:
-        st.subheader("Live Feed")
-        embed_html = f"""
-        <div>
-            <iframe width="100%" height="315"
-                src="https://www.youtube.com/embed/{VIDEO_ID}?autoplay=1&mute=0&rel=0"
-                frameborder="0"
-                allow="autoplay; encrypted-media; fullscreen"
-                allowfullscreen
-                style="border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
-            </iframe>
-            <p style="color:gray; font-size:0.82em; margin-top:8px;">
-                Jika video tidak muncul, coba refresh. &nbsp;
-                <a href="{STREAM_URL}" target="_blank" style="color:#2d6a9f;">
-                    Buka di YouTube →
-                </a>
-            </p>
-        </div>
-        """
-        st.components.v1.html(embed_html, height=360)
-
-    # ── Kanan: hasil deteksi YOLO ──────────────────────────
-    with right:
-        st.subheader("Hasil Deteksi YOLO")
-        frame_ph = st.empty()
-        stat_ph  = st.empty()
-        info_ph  = st.empty()
-        status_ph = st.empty()
-
-        # Init bridge di session_state agar persist antar rerun
-        if "detector_bridge" not in st.session_state:
-            from detector import StreamlitDetectorBridge
-            st.session_state.detector_bridge = StreamlitDetectorBridge()
-
-        bridge = st.session_state.detector_bridge
-
-        if run:
-            # Start jika belum jalan
-            if not bridge.is_running:
-                status_ph.info("Menghubungkan ke YouTube (butuh waktu 5-15 detik untuk memproses URL)...")
-                bridge.start(STREAM_URL, conf=conf)
-
-            while run and bridge.is_running:
-                
-                # Tampilkan error jika ada
-                if bridge.error:
-                    frame_ph.error(f"Error: {bridge.error}")
-                    if st.button("🔄 Coba Lagi", key="retry_btn"):
-                        bridge.stop()
-                        del st.session_state["detector_bridge"]
-                        st.rerun()
-                    break
-
-                elif bridge.latest_frame is not None:
-                    # Ambil frame dengan aman dari thread
-                    with bridge._lock:
-                        frame  = bridge.latest_frame.copy()
-                        stats  = bridge.latest_stats.copy()
-
-                    # Render gambar langsung ke placeholder yang sama
-                    frame_ph.image(frame, channels="RGB",
-                                   use_container_width=True,
-                                   caption=f"Deteksi: {stats.get('ts', '')}")
-
-                    vehicles = {VEHICLE_LABELS.get(k, k): v
-                                for k, v in stats.get("vehicles", {}).items()}
-
-                    # Update metrik tanpa reload halaman
-                    with stat_ph.container():
-                        c1, c2, c3 = st.columns(3)
-                        c1.metric("Terdeteksi", stats.get("total", 0))
-                        c2.metric("Kendaraan",  sum(vehicles.values()))
-                        c3.metric("Lainnya",    stats.get("others", 0))
-
-                    if vehicles:
-                        info_ph.markdown("  ".join(
-                            f"**{k}** {v}" for k, v in vehicles.items()
-                        ))
-                    status_ph.empty()
-                else:
-                    frame_ph.info("Memproses frame pertama dari YouTube... harap tunggu.")
-
-                # Jeda sepersekian detik saja (50ms) agar Streamlit menangkap frame seperti video halus
-                _time.sleep(0.05)
-
-        else:
-            # Stop bridge jika toggle dimatikan
-            if bridge.is_running:
-                bridge.stop()
-            frame_ph.info("Aktifkan toggle ▶ Mulai Deteksi untuk memulai.")
-    
-    # ── Section: Demo Detector ─────────────────────────────
-    st.markdown("---")
-    st.subheader("Demo Detector")
-    st.caption("Uji deteksi kendaraan & plat nomor menggunakan YOLO + EasyOCR")
-
-    upload = st.file_uploader("Upload gambar atau video pendek",
-                               type=["jpg", "jpeg", "png", "mp4", "avi", "mov"])
-
-    if upload is not None:
-        import numpy as np
-        from PIL import Image
-        import io
-
-        if upload.type.startswith("image"):
-            img       = Image.open(upload).convert("RGB")
-            frame_rgb = np.array(img)
-
-            col_ori, col_det = st.columns(2)
-            with col_ori:
-                st.markdown("**Original**")
-                st.image(img, use_container_width=True)
-            with col_det:
-                st.markdown("**Hasil Deteksi**")
-                with st.spinner("Menjalankan detector..."):
-                    try:
-                        from detector import process_single_frame
-                        result   = process_single_frame(frame_rgb, conf=conf)
-                        vehicles = {VEHICLE_LABELS.get(k, k): v
-                                    for k, v in result["vehicles"].items()}
-                        st.image(result["annotated"], channels="RGB",
-                                 use_container_width=True)
-                        c1, c2, c3 = st.columns(3)
-                        c1.metric("Terdeteksi", result["total"])
-                        c2.metric("Kendaraan",  sum(vehicles.values()))
-                        c3.metric("Lainnya",    result["others"])
-                        if vehicles:
-                            st.markdown("  ".join(
-                                f"**{k}** {v}" for k, v in vehicles.items()
-                            ))
-                    except Exception as e:
-                        st.error(f"Detector error: {e}")
-
-            st.markdown("**Deteksi Plat Nomor (EasyOCR)**")
-            with st.spinner("Membaca plat nomor..."):
-                try:
-                    import easyocr
-                    reader      = easyocr.Reader(["id"], gpu=True)
-                    ocr_results = reader.readtext(frame_rgb)
-                    plates      = [text for (_, text, prob) in ocr_results if prob > 0.4]
-                    if plates:
-                        st.success("Plat terdeteksi: " + "  |  ".join(plates))
-                    else:
-                        st.info("Tidak ada plat terdeteksi.")
-                except Exception as e:
-                    st.error(f"EasyOCR error: {e}")
-
-        elif upload.type.startswith("video"):
-            import tempfile, cv2
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-                tmp.write(upload.read())
-                tmp_path = tmp.name
-
-            st.video(upload)
-            max_frames = st.slider("Jumlah frame diproses", 5, 50, 10, 5)
-
-            if st.button("Jalankan Deteksi Video", type="primary"):
-                from detector import process_single_frame
-                
-                # ✅ CACHE READER DI SESSION STATE
-                if "ocr_reader" not in st.session_state:
-                    with st.spinner("Menyiapkan pendeteksi plat (pertama kali saja)..."):
-                        import easyocr
-                        st.session_state.ocr_reader = easyocr.Reader(["id"], gpu=True)
-                
-                reader = st.session_state.ocr_reader
-
-                cap       = cv2.VideoCapture(tmp_path)
-                total     = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                step      = max(1, total // max_frames)
-                
-                # ✅ RENDER PLACEHOLDER SEKALI, JANGAN DALAM LOOP
-                progress_ph = st.progress(0)
-                results_container = st.container()
-                
-                frame_idx = 0
-                all_detected_plates = set()
-                frame_results = []
-
-                while cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                        
-                    if frame_idx % step == 0:
-                        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        
-                        try:
-                            # Deteksi Kendaraan (YOLO)
-                            result = process_single_frame(frame_rgb, conf=conf)
-                            
-                            # Deteksi Plat Nomor (EasyOCR)
-                            ocr_results = reader.readtext(frame_rgb)
-                            frame_plates = [text for (_, text, prob) in ocr_results if prob > 0.4]
-                            
-                            # Simpan hasil
-                            for p in frame_plates:
-                                all_detected_plates.add(p)
-                            
-                            frame_results.append({
-                                "frame_idx": frame_idx,
-                                "image": result["annotated"],
-                                "plates": frame_plates,
-                                "total": result["total"]
-                            })
-                        except Exception as e:
-                            st.warning(f"Error frame {frame_idx}: {e}")
-                            
-                    frame_idx += 1
-                    progress_ph.progress(min(frame_idx / total, 1.0))
-
-                cap.release()
-                
-                # ✅ RENDER HASIL SEKALI SETELAH SELESAI (BUKAN DALAM LOOP)
-                with results_container:
-                    st.markdown("---")
-                    st.markdown("**Hasil Deteksi Video:**")
-                    
-                    if frame_results:
-                        # Tampilkan dalam grid 3 kolom
-                        cols = st.columns(3)
-                        for idx, res in enumerate(frame_results):
-                            with cols[idx % 3]:
-                                caption = f"Frame {res['frame_idx']}"
-                                if res['plates']:
-                                    caption += f"\nPlat: {', '.join(res['plates'])}"
-                                st.image(res["image"], channels="RGB",
-                                         caption=caption,
-                                         use_container_width=True)
-                    
-                    st.markdown("---")
-                    st.markdown("**Rekap Plat Nomor Terdeteksi:**")
-                    if all_detected_plates:
-                        st.success("Plat: " + " | ".join(all_detected_plates))
-                    else:
-                        st.info("Tidak ada plat terdeteksi.")
-
-# ============================================================
-# PAGE 7 — SETTINGS
+# PAGE 6 — SETTINGS
 # ============================================================
 
 def page_settings():
@@ -1092,7 +782,6 @@ def main():
     elif page == "E-TLE Integration": page_etle(df)
     elif page == "Reports":           page_reports(df, days_back)
     elif page == "Heatmap":           page_heatmap(df)
-    elif page == "Real-time Monitor": page_realtime()
     elif page == "Settings":          page_settings()
 
 if __name__ == "__main__":
