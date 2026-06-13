@@ -735,8 +735,8 @@ def _grab_frame_mjpeg(stream_url: str):
 def page_realtime():
     import time as _time
 
-    STREAM_URL = "https://www.youtube.com/live/AQd-p5hFtQo?si=IbHHVTbrYjplSOer"
-    VIDEO_ID   = "AQd-p5hFtQo"
+    STREAM_URL = "https://www.youtube.com/watch?v=eO19UTm93GQ"
+    VIDEO_ID   = "eO19UTm93GQ"
 
     st.title("Real-time Monitor")
 
@@ -762,13 +762,14 @@ def page_realtime():
             <iframe width="100%" height="315"
                 src="https://www.youtube.com/embed/{VIDEO_ID}?autoplay=1&mute=0&rel=0"
                 frameborder="0"
-                allow="autoplay; encrypted-media; fullscreen"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerpolicy="strict-origin-when-cross-origin"
                 allowfullscreen
                 style="border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
             </iframe>
             <p style="color:gray; font-size:0.82em; margin-top:8px;">
                 Jika video tidak muncul, coba refresh. &nbsp;
-                <a href="{STREAM_URL}" target="_blank" style="color:#2d6a9f;">
+                <a href="{STREAM_URL}" target="_blank" style="color:#2d6a9f; text-decoration:none;">
                     Buka di YouTube →
                 </a>
             </p>
