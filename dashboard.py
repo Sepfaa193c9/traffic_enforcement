@@ -130,21 +130,21 @@ st.markdown("""
         text-align: center;
         cursor: pointer;
         transition: all 0.3s ease;
-        border: 2px solid rgba(0,176,255,1);
-        color: blue;
-        background: rgba(0,176,255,1);
+        border: 2px solid #90c4f0;
+        color: #e8f4fd;
+        background: rgba(144,196,240,0.18);
         text-decoration: none;
     }
 
     .nav-button:hover {
-        background: rgba(255,255,255,0.2);
-        border-color: rgba(255,255,255,0.6);
+        background: rgba(144,196,240,0.32);
+        border-color: #b8d9f7;
     }
 
     .nav-button.active {
-        background: rgba(255,255,255,0.3);
-        border-color: white;
-        box-shadow: 0 0 10px rgba(255,255,255,0.3);
+        background: #4da6e8;
+        border-color: #7ec4f5e;
+        box-shadow: 0 0 0 3px rgba(77, 166, 232, 0.3);
     }
 
     .navbar-right {
