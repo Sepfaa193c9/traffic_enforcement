@@ -572,7 +572,7 @@ def page_reports(df: pd.DataFrame, days_back: int):
                                   ["Semua"] + [f"{k} - {v['name']}"
                                                for k, v in CAMERA_LOCATIONS.items()])
     with col3:
-        st.markdown("&nbsp;", unsafe_allow_html=True)
+        st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
         generate_btn = st.button("Generate Laporan Excel", type="primary",
                                  use_container_width=True)
 
