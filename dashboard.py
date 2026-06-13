@@ -737,7 +737,7 @@ def page_realtime():
     STREAM_URL = "https://www.youtube.com/live/AQd-p5hFtQo?si=IbHHVTbrYjplSOer"
     VIDEO_ID   = "AQd-p5hFtQo"
 
-    st.title("📱 Real-time Monitor")
+    st.title("Real-time Monitor")
 
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
@@ -755,7 +755,7 @@ def page_realtime():
 
     # ── Kiri: embed YouTube ────────────────────────────────
     with left:
-        st.subheader("📺 Live Feed")
+        st.subheader("Live Feed")
         embed_html = f"""
         <div>
             <iframe width="100%" height="315"
@@ -777,7 +777,7 @@ def page_realtime():
 
     # ── Kanan: hasil deteksi YOLO ──────────────────────────
     with right:
-        st.subheader("🤖 Hasil Deteksi YOLO")
+        st.subheader("Hasil Deteksi YOLO")
         frame_ph = st.empty()
         stat_ph  = st.empty()
         info_ph  = st.empty()
@@ -798,7 +798,6 @@ def page_realtime():
                 status_ph.info("Menghubungkan ke YouTube (butuh waktu 5-15 detik untuk memproses URL)...")
                 bridge.start(STREAM_URL, conf=conf)
 
-            # 🔥 FIX UTAMA: Gunakan while loop, BUKAN st.rerun()
             while run and bridge.is_running:
                 
                 # Tampilkan error jika ada
