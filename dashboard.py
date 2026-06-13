@@ -131,8 +131,8 @@ st.markdown("""
         cursor: pointer;
         transition: all 0.3s ease;
         border: 2px solid rgba(255,255,255,0.3);
-        color: white;
-        background: rgba(255,255,255,0.1);
+        color: light blue;
+        background: rgba(255,255,255,0.);
         text-decoration: none;
     }
 
