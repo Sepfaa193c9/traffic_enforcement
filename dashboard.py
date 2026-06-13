@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import sqlite3
 import os
 import sys
+from typing import Tuple
 
 # Tambahkan direktori saat ini ke path
 sys.path.insert(0, os.path.dirname(__file__))
@@ -205,7 +206,7 @@ def empty_state(msg: str = "Belum ada data. Jalankan `generate_demo_data.py` ter
 # NAVBAR HORIZONTAL
 # ============================================================
 
-def render_navbar() -> tuple[str, int]:
+def render_navbar() -> Tuple[str, int]:
     """Render horizontal navbar with navigation and controls"""
     st.markdown("""
     <div class="navbar-container" style="padding: 20px 30px; margin-bottom: 20px;">
@@ -572,7 +573,7 @@ def page_reports(df: pd.DataFrame, days_back: int):
                                   ["Semua"] + [f"{k} - {v['name']}"
                                                for k, v in CAMERA_LOCATIONS.items()])
     with col3:
-        st.markdown("&nbsp;", unsafe_allow_html=True)
+        st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
         generate_btn = st.button("Generate Laporan Excel", type="primary",
                                  use_container_width=True)
 
@@ -737,7 +738,7 @@ def page_realtime():
     STREAM_URL = "https://www.youtube.com/live/AQd-p5hFtQo?si=IbHHVTbrYjplSOer"
     VIDEO_ID   = "AQd-p5hFtQo"
 
-    st.title("📱 Real-time Monitor")
+    st.title("Real-time Monitor")
 
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
@@ -755,7 +756,7 @@ def page_realtime():
 
     # ── Kiri: embed YouTube ────────────────────────────────
     with left:
-        st.subheader("📺 Live Feed")
+        st.subheader("Live Feed")
         embed_html = f"""
         <div>
             <iframe width="100%" height="315"
@@ -777,7 +778,7 @@ def page_realtime():
 
     # ── Kanan: hasil deteksi YOLO ──────────────────────────
     with right:
-        st.subheader("🤖 Hasil Deteksi YOLO")
+        st.subheader("Hasil Deteksi YOLO")
         frame_ph = st.empty()
         stat_ph  = st.empty()
         info_ph  = st.empty()
@@ -790,15 +791,12 @@ def page_realtime():
 
         bridge = st.session_state.detector_bridge
 
-    
-
         if run:
             # Start jika belum jalan
             if not bridge.is_running:
                 status_ph.info("Menghubungkan ke YouTube (butuh waktu 5-15 detik untuk memproses URL)...")
                 bridge.start(STREAM_URL, conf=conf)
 
-            # 🔥 FIX UTAMA: Gunakan while loop, BUKAN st.rerun()
             while run and bridge.is_running:
                 
                 # Tampilkan error jika ada
@@ -807,8 +805,8 @@ def page_realtime():
                     if st.button("🔄 Coba Lagi", key="retry_btn"):
                         bridge.stop()
                         del st.session_state["detector_bridge"]
-                        st.rerun() # rerun di sini boleh karena ini kondisi reset error
-                    break # Keluar dari loop
+                        st.rerun()
+                    break
 
                 elif bridge.latest_frame is not None:
                     # Ambil frame dengan aman dari thread
@@ -847,9 +845,10 @@ def page_realtime():
             if bridge.is_running:
                 bridge.stop()
             frame_ph.info("Aktifkan toggle ▶ Mulai Deteksi untuk memulai.")
+    
     # ── Section: Demo Detector ─────────────────────────────
     st.markdown("---")
-    st.subheader("🔍 Demo Detector — Upload Gambar / Video")
+    st.subheader("Demo Detector")
     st.caption("Uji deteksi kendaraan & plat nomor menggunakan YOLO + EasyOCR")
 
     upload = st.file_uploader("Upload gambar atau video pendek",
@@ -914,31 +913,85 @@ def page_realtime():
 
             if st.button("Jalankan Deteksi Video", type="primary"):
                 from detector import process_single_frame
+                
+                # ✅ CACHE READER DI SESSION STATE
+                if "ocr_reader" not in st.session_state:
+                    with st.spinner("Menyiapkan pendeteksi plat (pertama kali saja)..."):
+                        import easyocr
+                        st.session_state.ocr_reader = easyocr.Reader(["id"], gpu=True)
+                
+                reader = st.session_state.ocr_reader
+
                 cap       = cv2.VideoCapture(tmp_path)
                 total     = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 step      = max(1, total // max_frames)
-                progress  = st.progress(0)
-                cols      = st.columns(3)
-                col_idx   = 0
+                
+                # ✅ RENDER PLACEHOLDER SEKALI, JANGAN DALAM LOOP
+                progress_ph = st.progress(0)
+                results_container = st.container()
+                
                 frame_idx = 0
+                all_detected_plates = set()
+                frame_results = []
 
                 while cap.isOpened():
                     ret, frame = cap.read()
                     if not ret:
                         break
+                        
                     if frame_idx % step == 0:
                         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        result    = process_single_frame(frame_rgb, conf=conf)
-                        with cols[col_idx % 3]:
-                            st.image(result["annotated"], channels="RGB",
-                                     caption=f"Frame {frame_idx}",
-                                     use_container_width=True)
-                        col_idx += 1
+                        
+                        try:
+                            # Deteksi Kendaraan (YOLO)
+                            result = process_single_frame(frame_rgb, conf=conf)
+                            
+                            # Deteksi Plat Nomor (EasyOCR)
+                            ocr_results = reader.readtext(frame_rgb)
+                            frame_plates = [text for (_, text, prob) in ocr_results if prob > 0.4]
+                            
+                            # Simpan hasil
+                            for p in frame_plates:
+                                all_detected_plates.add(p)
+                            
+                            frame_results.append({
+                                "frame_idx": frame_idx,
+                                "image": result["annotated"],
+                                "plates": frame_plates,
+                                "total": result["total"]
+                            })
+                        except Exception as e:
+                            st.warning(f"Error frame {frame_idx}: {e}")
+                            
                     frame_idx += 1
-                    progress.progress(min(frame_idx / total, 1.0))
+                    progress_ph.progress(min(frame_idx / total, 1.0))
 
                 cap.release()
- 
+                
+                # ✅ RENDER HASIL SEKALI SETELAH SELESAI (BUKAN DALAM LOOP)
+                with results_container:
+                    st.markdown("---")
+                    st.markdown("**Hasil Deteksi Video:**")
+                    
+                    if frame_results:
+                        # Tampilkan dalam grid 3 kolom
+                        cols = st.columns(3)
+                        for idx, res in enumerate(frame_results):
+                            with cols[idx % 3]:
+                                caption = f"Frame {res['frame_idx']}"
+                                if res['plates']:
+                                    caption += f"\nPlat: {', '.join(res['plates'])}"
+                                st.image(res["image"], channels="RGB",
+                                         caption=caption,
+                                         use_container_width=True)
+                    
+                    st.markdown("---")
+                    st.markdown("**Rekap Plat Nomor Terdeteksi:**")
+                    if all_detected_plates:
+                        st.success("Plat: " + " | ".join(all_detected_plates))
+                    else:
+                        st.info("Tidak ada plat terdeteksi.")
+
 # ============================================================
 # PAGE 7 — SETTINGS
 # ============================================================
