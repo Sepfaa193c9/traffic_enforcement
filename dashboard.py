@@ -779,7 +779,7 @@ def page_realtime():
 
     # ── Kanan: hasil deteksi YOLO ──────────────────────────
     with right:
-        st.subheader("Hasil Deteksi YOLO")
+        st.subheader("Hasil Deteksi EDITH")
         frame_ph = st.empty()
         stat_ph  = st.empty()
         info_ph  = st.empty()
