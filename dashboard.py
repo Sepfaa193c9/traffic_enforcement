@@ -848,7 +848,7 @@ def page_realtime():
             frame_ph.info("Aktifkan toggle ▶ Mulai Deteksi untuk memulai.")
     # ── Section: Demo Detector ─────────────────────────────
     st.markdown("---")
-    st.subheader("🔍 Demo Detector — Upload Gambar / Video")
+    st.subheader("Demo Detector")
     st.caption("Uji deteksi kendaraan & plat nomor menggunakan YOLO + EasyOCR")
 
     upload = st.file_uploader("Upload gambar atau video pendek",
