@@ -75,7 +75,7 @@ preprocessing = get_weather_preprocesing()
 
 ret, frame = cap.read()
 
-processed_frame = preprocessor.process(frame. conditional='auto')
+processed_frame = preprocessor.process(frame, conditional='auto')
 
 results = model(processed_frame)
 # ============================================================
