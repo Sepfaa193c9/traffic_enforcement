@@ -913,6 +913,12 @@ def page_realtime():
 
             if st.button("Jalankan Deteksi Video", type="primary"):
                 from detector import process_single_frame
+                
+                #Inisialisasi EasyOCR di luar loop agar pemrosesan video tidak lambat
+                with st.spinner("Menyiapkan pendeteksi plat..."):
+                    import easyocr
+                    reader = easyocr.Reader(["id"], gpu=True)
+
                 cap       = cv2.VideoCapture(tmp_path)
                 total     = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 step      = max(1, total // max_frames)
@@ -920,23 +926,51 @@ def page_realtime():
                 cols      = st.columns(3)
                 col_idx   = 0
                 frame_idx = 0
+                
+                # 2. Siapkan wadah (Set) untuk menampung plat unik agar tidak banyak duplikat
+                all_detected_plates = set()
 
                 while cap.isOpened():
                     ret, frame = cap.read()
                     if not ret:
                         break
+                        
                     if frame_idx % step == 0:
                         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        result    = process_single_frame(frame_rgb, conf=conf)
+                        
+                        # Deteksi Kendaraan (YOLO)
+                        result = process_single_frame(frame_rgb, conf=conf)
+                        
+                        # Deteksi Plat Nomor (EasyOCR)
+                        ocr_results = reader.readtext(frame_rgb)
+                        frame_plates = [text for (_, text, prob) in ocr_results if prob > 0.4]
+                        
+                        # Simpan hasil plat dari frame ini ke daftar keseluruhan
+                        for p in frame_plates:
+                            all_detected_plates.add(p)
+                            
+                        # Buat caption gambar
+                        caption_text = f"Frame {frame_idx}"
+                        if frame_plates:
+                            caption_text += f" | Plat: {', '.join(frame_plates)}"
+                            
                         with cols[col_idx % 3]:
                             st.image(result["annotated"], channels="RGB",
-                                     caption=f"Frame {frame_idx}",
+                                     caption=caption_text,
                                      use_container_width=True)
                         col_idx += 1
+                        
                     frame_idx += 1
                     progress.progress(min(frame_idx / total, 1.0))
 
                 cap.release()
+                
+                st.markdown("---")
+                st.markdown("**Hasil Rekap Deteksi Plat Nomor (Video):**")
+                if all_detected_plates:
+                    st.success("Plat terdeteksi: " + "  |  ".join(all_detected_plates))
+                else:
+                    st.info("Tidak ada plat terdeteksi di sepanjang frame yang diproses.")
  
 # ============================================================
 # PAGE 7 — SETTINGS
